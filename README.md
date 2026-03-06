@@ -81,6 +81,10 @@ The gateway runs a 10 Hz polling loop:
 3. **Apply** coil writes to relay and open-drain outputs
 4. **Log** a heartbeat summary every 5 seconds
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the full project roadmap — what's implemented, what's planned, and what was abandoned.
+
 ## License
 
 [MIT](LICENSE)
