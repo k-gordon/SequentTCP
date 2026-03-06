@@ -28,9 +28,9 @@
 **so that** I can build and iterate on the gateway from a dev machine targeting the Pi.
 
 **Acceptance Criteria:**
-- [ ] `cargo init sequent-gateway` with `edition = "2021"`
-- [ ] `Cargo.toml` includes dependencies: `i2cdev`, `tokio`, `tokio-modbus`, `clap`, `tracing`, `tracing-subscriber`
-- [ ] `.cargo/config.toml` configured for `aarch64-unknown-linux-gnu` target
+- [x] `cargo init sequent-gateway` with `edition = "2021"`
+- [x] `Cargo.toml` includes dependencies: `i2cdev`, `tokio`, `clap`, `tracing`, `tracing-subscriber` (custom Modbus TCP server instead of `tokio-modbus`)
+- [x] `.cargo/config.toml` configured for `aarch64-unknown-linux-gnu` and `armv7-unknown-linux-gnueabihf` targets
 - [ ] `cross` or `cargo-zigbuild` builds a working ARM binary
 - [ ] CI-ready `Makefile` or `justfile` with `build`, `build-release`, `cross` targets
 
@@ -45,12 +45,12 @@
 **so that** all hardware access uses verified register addresses with no magic numbers.
 
 **Acceptance Criteria:**
-- [ ] `src/registers.rs` contains a `#[repr(u8)]` enum ported from [`megaind.h`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/megaind.h)
-- [ ] Covers: relay set/clr (`0x01`/`0x02`), opto input (`0x03`), OD PWM (`0x14`), analog I/O base addresses, diagnostics (`0x72`–`0x79`), RTC, watchdog
-- [ ] 16-Relay HAT address constants included (base address `0x29`, relay set/clr registers)
-- [ ] Constants for `SLAVE_OWN_ADDRESS_BASE` (`0x50` for MegaInd, `0x29` for 16-Relay) and stack offset logic
-- [ ] `VOLT_TO_MILLIVOLT` scaling constant (`1000.0`)
-- [ ] Unit tests verifying key register addresses match the C header
+- [x] `src/registers.rs` contains typed `pub const` constants ported from [`megaind.h`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/megaind.h)
+- [x] Covers: relay set/clr (`0x01`/`0x02`), opto input (`0x03`), OD PWM (`0x14`), analog I/O base addresses, diagnostics (`0x72`–`0x79`), RTC, watchdog, CPU reset, 1-Wire
+- [x] 16-Relay HAT address constants included (base address `0x20`, relay set/clr registers)
+- [x] Constants for `MEGAIND_BASE_ADDR` (`0x50`) / `RELAY16_BASE_ADDR` (`0x20`) and stack offset logic
+- [x] `VOLT_TO_MILLIVOLT` scaling constant (`1000.0`)
+- [x] Unit tests verifying key register addresses match the C header (2 tests)
 
 ---
 
@@ -63,15 +63,15 @@
 **so that** the gateway can access all analog/digital I/O without CLI tools.
 
 **Acceptance Criteria:**
-- [ ] `src/hal/megaind.rs` — struct wrapping `i2cdev::linux::LinuxI2CDevice`
-- [ ] `new(bus: &str, stack_id: u8)` constructor opens `/dev/i2c-1` at address `0x50 + stack_id`
-- [ ] `read_opto_inputs() -> (u8, [bool; 8])` — reads `I2C_MEM_OPTO_IN_VAL` (1 byte), returns bitmask + bool array
-- [ ] `read_4_20ma_inputs() -> [f32; 8]` — reads 8 × 16-bit LE values from `I2C_MEM_I4_20_IN_VAL1`, divides by `VOLT_TO_MILLIVOLT`
-- [ ] `read_0_10v_inputs() -> [f32; 4]` — reads 4 × 16-bit LE values from `I2C_MEM_U0_10_IN_VAL1`, divides by `VOLT_TO_MILLIVOLT`
-- [ ] `read_system_voltage() -> f32` — reads 16-bit LE from `I2C_MEM_DIAG_24V`, divides by `VOLT_TO_MILLIVOLT`
-- [ ] `set_od_output(channel: u8, state: bool)` — writes `I2C_MEM_RELAY_SET` or `I2C_MEM_RELAY_CLR` with channel byte
-- [ ] All reads use the 1-byte-address-prefix protocol from Sequent's [`comm.c`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/comm.c)
-- [ ] Errors are returned as `Result<T, I2cError>`, not panics
+- [x] `src/hal/megaind.rs` — struct wrapping `i2cdev::linux::LinuxI2CDevice`
+- [x] `new(bus: &str, stack_id: u8)` constructor opens `/dev/i2c-1` at address `0x50 + stack_id`
+- [x] `read_opto_inputs() -> (u8, [bool; 8])` — reads `I2C_MEM_OPTO_IN_VAL` (1 byte), returns bitmask + bool array
+- [x] `read_4_20ma_inputs() -> [f32; 8]` — reads 8 × 16-bit LE values from `I2C_MEM_I4_20_IN_VAL1`, divides by `VOLT_TO_MILLIVOLT`
+- [x] `read_0_10v_inputs() -> [f32; 4]` — reads 4 × 16-bit LE values from `I2C_MEM_U0_10_IN_VAL1`, divides by `VOLT_TO_MILLIVOLT`
+- [x] `read_system_voltage() -> f32` — reads 16-bit LE from `I2C_MEM_DIAG_24V`, divides by `VOLT_TO_MILLIVOLT`
+- [x] `set_od_output(channel: u8, state: bool)` — writes `I2C_MEM_RELAY_SET` or `I2C_MEM_RELAY_CLR` with channel byte
+- [x] All reads use the 1-byte-address-prefix protocol from Sequent's [`comm.c`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/comm.c)
+- [x] Errors are returned as `Result<T, anyhow::Error>`, not panics
 
 ---
 
@@ -84,11 +84,11 @@
 **so that** relay outputs are driven directly without the `16relind` CLI tool.
 
 **Acceptance Criteria:**
-- [ ] `src/hal/relay16.rs` — struct wrapping `i2cdev::linux::LinuxI2CDevice`
-- [ ] `new(bus: &str, stack_id: u8)` constructor opens `/dev/i2c-1` at address `0x29 + stack_id`
-- [ ] `set_relay(channel: u8, state: bool)` — writes relay set/clr register with channel byte
+- [x] `src/hal/relay16.rs` — struct wrapping `i2cdev::linux::LinuxI2CDevice`
+- [x] `new(bus: &str, stack_id: u8)` constructor opens `/dev/i2c-1` at address `0x20 + stack_id`
+- [x] `set_relay(channel: u8, state: bool)` — writes relay set/clr register with channel bitmask
 - [ ] `read_relay_state() -> u16` — reads current relay bitmask (if supported by HAT firmware)
-- [ ] Errors are returned as `Result<T, I2cError>`
+- [x] Errors are returned as `Result<T, anyhow::Error>`
 
 ---
 
@@ -101,11 +101,11 @@
 **so that** the gateway only issues I²C writes when a Modbus client actually changes a coil — preventing I²C bus saturation.
 
 **Acceptance Criteria:**
-- [ ] `src/cache.rs` — `OutputCache` struct holding `[Option<bool>; 16]` for relays and `[Option<bool>; 4]` for OD outputs
-- [ ] `should_update(index, new_state) -> bool` returns `true` only if state differs from cached value
-- [ ] On successful I²C write, cache is updated
-- [ ] On I²C write failure, cached value is cleared to `None` so the next cycle retries
-- [ ] Behaviour matches current Python implementation (`current_states = [None] * 16`)
+- [x] `src/cache.rs` — `OutputCache` struct holding `[Option<bool>; 16]` for relays and `[Option<bool>; 4]` for OD outputs
+- [x] `should_update_relay(index, new_state) -> bool` returns `true` only if state differs from cached value
+- [x] On successful I²C write, cache is updated via `confirm_relay()`/`confirm_od()`
+- [x] On I²C write failure, cached value is cleared to `None` via `invalidate_relay()`/`invalidate_od()` so the next cycle retries
+- [x] Behaviour matches current Python implementation (`current_states = [None] * 16`); 5 unit tests passing
 
 ---
 
@@ -118,14 +118,14 @@
 **so that** my existing SCADA/PLC configuration works without changes.
 
 **Acceptance Criteria:**
-- [ ] `src/modbus.rs` — `tokio-modbus` TCP server listening on configurable `host:port`
-- [ ] **Coils (R/W):** addresses 0–15 → 16-Relay board; addresses 16–19 → OD outputs 1–4
-- [ ] **Discrete Inputs (RO):** addresses 0–7 → Opto-Inputs 1–8
-- [ ] **Holding Registers (RO):** addresses 0–7 → 4-20 mA × 100; address 8 → PSU voltage × 100; addresses 10–13 → 0-10 V × 100
-- [ ] **Holding Register 15** → Opto bitmask (only when `--map-opto-to-reg` is enabled)
-- [ ] Server accepts connections from any Slave ID (unit ID) — matches pyModbusTCP default
-- [ ] Supports Modbus function codes: 0x01, 0x02, 0x03, 0x05, 0x0F (minimum)
-- [ ] Concurrent client connections handled via `tokio` tasks
+- [x] `src/modbus.rs` — custom Modbus TCP server with raw MBAP framing (lighter than `tokio-modbus`)
+- [x] **Coils (R/W):** addresses 0–15 → 16-Relay board; addresses 16–19 → OD outputs 1–4
+- [x] **Discrete Inputs (RO):** addresses 0–7 → Opto-Inputs 1–8
+- [x] **Holding Registers (RO):** addresses 0–7 → 4-20 mA × 100; address 8 → PSU voltage × 100; addresses 10–13 → 0-10 V × 100
+- [x] **Holding Register 15** → Opto bitmask (only when `--map-opto-to-reg` is enabled)
+- [x] Server accepts connections from any Slave ID (unit ID)
+- [x] Supports Modbus function codes: 0x01, 0x02, 0x03, 0x05, 0x0F
+- [x] Concurrent client connections handled via `tokio` tasks
 
 ---
 
@@ -138,12 +138,12 @@
 **so that** sensor data is fresh and relay commands are applied within 100 ms.
 
 **Acceptance Criteria:**
-- [ ] `src/main.rs` — `tokio::time::interval(Duration::from_millis(100))` drives the loop
-- [ ] Each tick: read all inputs → update Modbus data bank → apply coil writes via cache
-- [ ] Loop timing is compensated (interval ticks, not sleep-after-work)
-- [ ] Graceful shutdown on `SIGINT`/`SIGTERM` via `tokio::signal`
-- [ ] Root check on startup with warning log if `euid != 0`
-- [ ] Log I/O cycle duration per tick at `DEBUG` level
+- [x] `src/main.rs` — `std::thread::sleep` drives 10 Hz loop on dedicated OS thread (Modbus async on tokio)
+- [x] Each tick: read all inputs → update Modbus data bank → apply coil writes via cache
+- [x] Loop timing is compensated (interval ticks, not sleep-after-work)
+- [x] Graceful shutdown on `SIGINT`/`SIGTERM` via `tokio::signal` + `AtomicBool`
+- [x] Root check on startup with warning log if `euid != 0` (Linux only, gated with `#[cfg(unix)]`)
+- [x] Log I/O cycle duration per tick at `DEBUG` level
 
 ---
 
@@ -156,7 +156,7 @@
 **so that** I can monitor the system at a glance from the console or journal.
 
 **Acceptance Criteria:**
-- [ ] Every 5 seconds, log a block matching the Python format:
+- [x] Every 5 seconds, log a block matching the Python format:
   ```
   --- SYSTEM HEARTBEAT ---
   POWER: 24.12V
@@ -167,8 +167,8 @@
   OD OUT (1-4) : 0000
   ------------------------
   ```
-- [ ] Uses `tracing::info!` macro
-- [ ] Interval is configurable (default 5 s)
+- [x] Uses `tracing::info!` macro
+- [x] Interval is configurable via `--log-interval` (default 5 s)
 
 ---
 
@@ -181,14 +181,14 @@
 **so that** I can configure the gateway at launch without editing code.
 
 **Acceptance Criteria:**
-- [ ] `clap` derive-based CLI struct in `src/cli.rs`
-- [ ] `--host <IP>` (default `0.0.0.0`)
-- [ ] `--port <PORT>` (default `502`)
-- [ ] `--map-opto-to-reg` (flag, default off)
-- [ ] `--ind-stack <ID>` (default `1`) — MegaInd HAT stack level
-- [ ] `--relay-stack <ID>` (default `0`) — 16-Relay HAT stack level
-- [ ] `--log-interval <SECS>` (default `5`) — heartbeat period
-- [ ] `--help` and `--version` auto-generated
+- [x] `clap` derive-based CLI struct in `src/cli.rs`
+- [x] `--host <IP>` (default `0.0.0.0`)
+- [x] `--port <PORT>` (default `502`)
+- [x] `--map-opto-to-reg` (flag, default off)
+- [x] `--ind-stack <ID>` (default `1`) — MegaInd HAT stack level
+- [x] `--relay-stack <ID>` (default `0`) — 16-Relay HAT stack level
+- [x] `--log-interval <SECS>` (default `5`) — heartbeat period
+- [x] `--help` and `--version` auto-generated
 
 ---
 
