@@ -40,4 +40,19 @@ pub struct Cli {
     /// Consecutive I²C failures before attempting GPIO bus recovery (0 = disabled)
     #[arg(long, default_value_t = 10)]
     pub i2c_reset_threshold: u32,
+
+    /// Modbus slave ID for the 16-Relay HAT [1–247]
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=247))]
+    pub relay_slave_id: u8,
+
+    /// Modbus slave ID for the Industrial (MegaInd) HAT [1–247]
+    #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u8).range(1..=247))]
+    pub ind_slave_id: u8,
+
+    /// Use a single flat Modbus Slave ID (backward-compatible mode).
+    ///
+    /// All coils, discrete inputs, and holding registers appear under one
+    /// slave ID (the relay-slave-id value) using the flat memory map.
+    #[arg(long)]
+    pub single_slave: bool,
 }

@@ -11,17 +11,18 @@
 //! | 0x05 | Write Single Coil      | Write     |
 //! | 0x0F | Write Multiple Coils   | Write     |
 //!
-//! The server accepts any Modbus Unit ID (slave address), matching the
-//! behaviour of the Python PoC (pyModbusTCP defaults).
+//! Requests are routed by Modbus Unit ID through the [`SlaveMap`] to the
+//! appropriate board's register slice.
 
 use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::databank::DataBank;
+use crate::slave_map::{RegType, SlaveMap};
 
 // ── Modbus function codes ────────────────────────────────────────────
 const FC_READ_COILS: u8 = 0x01;
@@ -34,6 +35,7 @@ const FC_WRITE_MULTIPLE_COILS: u8 = 0x0F;
 const EX_ILLEGAL_FUNCTION: u8 = 0x01;
 const EX_ILLEGAL_DATA_ADDRESS: u8 = 0x02;
 const EX_ILLEGAL_DATA_VALUE: u8 = 0x03;
+const EX_GATEWAY_TARGET_FAILED: u8 = 0x0B;
 
 // ════════════════════════════════════════════════════════════════════════
 // Server entry point
@@ -46,6 +48,7 @@ pub async fn serve(
     host: &str,
     port: u16,
     data_bank: Arc<RwLock<DataBank>>,
+    slave_map: Arc<SlaveMap>,
 ) -> Result<()> {
     let addr = format!("{host}:{port}");
     let listener = TcpListener::bind(&addr).await?;
@@ -55,8 +58,9 @@ pub async fn serve(
         let (stream, peer) = listener.accept().await?;
         debug!("Modbus client connected: {peer}");
         let db = data_bank.clone();
+        let sm = slave_map.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream, db).await {
+            if let Err(e) = handle_connection(stream, db, sm).await {
                 debug!("Connection from {peer} closed: {e:#}");
             }
         });
@@ -77,6 +81,7 @@ pub async fn serve(
 async fn handle_connection(
     mut stream: TcpStream,
     data_bank: Arc<RwLock<DataBank>>,
+    slave_map: Arc<SlaveMap>,
 ) -> Result<()> {
     let mut header = [0u8; 7];
 
@@ -105,7 +110,8 @@ async fn handle_connection(
         let pdu_data = &pdu[1..];
 
         // Process and respond
-        let response_pdu = process_request(function_code, pdu_data, &data_bank);
+        let response_pdu =
+            process_request(function_code, pdu_data, unit_id, &data_bank, &slave_map);
 
         // Build MBAP response
         let resp_length = (response_pdu.len() + 1) as u16; // +1 for unit_id
@@ -127,18 +133,45 @@ async fn handle_connection(
 fn process_request(
     fc: u8,
     data: &[u8],
+    unit_id: u8,
     data_bank: &Arc<RwLock<DataBank>>,
+    slave_map: &SlaveMap,
 ) -> Vec<u8> {
-    match fc {
-        FC_READ_COILS => read_bits(fc, data, data_bank, true),
-        FC_READ_DISCRETE_INPUTS => read_bits(fc, data, data_bank, false),
-        FC_READ_HOLDING_REGISTERS => read_registers(fc, data, data_bank),
-        FC_WRITE_SINGLE_COIL => write_single_coil(fc, data, data_bank),
-        FC_WRITE_MULTIPLE_COILS => write_multiple_coils(fc, data, data_bank),
+    // Determine register type for this FC
+    let reg_type = match fc {
+        FC_READ_COILS | FC_WRITE_SINGLE_COIL | FC_WRITE_MULTIPLE_COILS => RegType::Coils,
+        FC_READ_DISCRETE_INPUTS => RegType::DiscreteInputs,
+        FC_READ_HOLDING_REGISTERS => RegType::HoldingRegisters,
         _ => {
             error!("Unsupported Modbus FC 0x{fc:02X}");
-            exception(fc, EX_ILLEGAL_FUNCTION)
+            return exception(fc, EX_ILLEGAL_FUNCTION);
         }
+    };
+
+    // Resolve Unit ID → DataBank slice
+    let slice = match slave_map.resolve(unit_id, reg_type) {
+        Some(s) => s,
+        None => {
+            warn!("Modbus request for unknown unit ID {unit_id}");
+            return exception(fc, EX_GATEWAY_TARGET_FAILED);
+        }
+    };
+
+    match fc {
+        FC_READ_COILS => read_bits(fc, data, data_bank, true, slice.offset, slice.max_count),
+        FC_READ_DISCRETE_INPUTS => {
+            read_bits(fc, data, data_bank, false, slice.offset, slice.max_count)
+        }
+        FC_READ_HOLDING_REGISTERS => {
+            read_registers(fc, data, data_bank, slice.offset, slice.max_count)
+        }
+        FC_WRITE_SINGLE_COIL => {
+            write_single_coil(fc, data, data_bank, slice.offset, slice.max_count)
+        }
+        FC_WRITE_MULTIPLE_COILS => {
+            write_multiple_coils(fc, data, data_bank, slice.offset, slice.max_count)
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -150,11 +183,15 @@ fn process_request(
 ///
 /// Request:  `[start_addr: u16, quantity: u16]`
 /// Response: `[fc, byte_count, packed_bits…]`
+///
+/// `offset` and `max_count` restrict access to the slave's register slice.
 fn read_bits(
     fc: u8,
     data: &[u8],
     data_bank: &Arc<RwLock<DataBank>>,
     is_coils: bool,
+    offset: usize,
+    max_count: usize,
 ) -> Vec<u8> {
     if data.len() < 4 {
         return exception(fc, EX_ILLEGAL_DATA_VALUE);
@@ -167,16 +204,16 @@ fn read_bits(
         return exception(fc, EX_ILLEGAL_DATA_VALUE);
     }
 
+    if start + quantity > max_count {
+        return exception(fc, EX_ILLEGAL_DATA_ADDRESS);
+    }
+
     let db = data_bank.read().unwrap();
     let bits: &[bool] = if is_coils {
         &db.coils
     } else {
         &db.discrete_inputs
     };
-
-    if start + quantity > bits.len() {
-        return exception(fc, EX_ILLEGAL_DATA_ADDRESS);
-    }
 
     // Pack bools into bytes (LSB first per Modbus spec)
     let byte_count = (quantity + 7) / 8;
@@ -188,7 +225,7 @@ fn read_bits(
         let mut byte_val = 0u8;
         for bit_idx in 0..8 {
             let idx = byte_idx * 8 + bit_idx;
-            if idx < quantity && bits[start + idx] {
+            if idx < quantity && bits[offset + start + idx] {
                 byte_val |= 1 << bit_idx;
             }
         }
@@ -206,6 +243,8 @@ fn read_registers(
     fc: u8,
     data: &[u8],
     data_bank: &Arc<RwLock<DataBank>>,
+    offset: usize,
+    max_count: usize,
 ) -> Vec<u8> {
     if data.len() < 4 {
         return exception(fc, EX_ILLEGAL_DATA_VALUE);
@@ -218,11 +257,11 @@ fn read_registers(
         return exception(fc, EX_ILLEGAL_DATA_VALUE);
     }
 
-    let db = data_bank.read().unwrap();
-
-    if start + quantity > db.holding_registers.len() {
+    if start + quantity > max_count {
         return exception(fc, EX_ILLEGAL_DATA_ADDRESS);
     }
+
+    let db = data_bank.read().unwrap();
 
     let byte_count = quantity * 2;
     let mut result = Vec::with_capacity(2 + byte_count);
@@ -230,7 +269,7 @@ fn read_registers(
     result.push(byte_count as u8);
 
     for i in 0..quantity {
-        let val = db.holding_registers[start + i];
+        let val = db.holding_registers[offset + start + i];
         result.extend_from_slice(&val.to_be_bytes());
     }
 
@@ -245,6 +284,8 @@ fn write_single_coil(
     fc: u8,
     data: &[u8],
     data_bank: &Arc<RwLock<DataBank>>,
+    offset: usize,
+    max_count: usize,
 ) -> Vec<u8> {
     if data.len() < 4 {
         return exception(fc, EX_ILLEGAL_DATA_VALUE);
@@ -259,11 +300,12 @@ fn write_single_coil(
         _ => return exception(fc, EX_ILLEGAL_DATA_VALUE),
     };
 
-    let mut db = data_bank.write().unwrap();
-    if addr >= db.coils.len() {
+    if addr >= max_count {
         return exception(fc, EX_ILLEGAL_DATA_ADDRESS);
     }
-    db.coils[addr] = state;
+
+    let mut db = data_bank.write().unwrap();
+    db.coils[offset + addr] = state;
 
     // Echo the request PDU back as the response
     let mut result = Vec::with_capacity(5);
@@ -280,6 +322,8 @@ fn write_multiple_coils(
     fc: u8,
     data: &[u8],
     data_bank: &Arc<RwLock<DataBank>>,
+    offset: usize,
+    max_count: usize,
 ) -> Vec<u8> {
     if data.len() < 5 {
         return exception(fc, EX_ILLEGAL_DATA_VALUE);
@@ -296,16 +340,17 @@ fn write_multiple_coils(
         return exception(fc, EX_ILLEGAL_DATA_VALUE);
     }
 
-    let mut db = data_bank.write().unwrap();
-    if start + quantity > db.coils.len() {
+    if start + quantity > max_count {
         return exception(fc, EX_ILLEGAL_DATA_ADDRESS);
     }
+
+    let mut db = data_bank.write().unwrap();
 
     // Unpack bits from bytes
     for i in 0..quantity {
         let byte_idx = i / 8;
         let bit_idx = i % 8;
-        db.coils[start + i] = (data[5 + byte_idx] >> bit_idx) & 1 == 1;
+        db.coils[offset + start + i] = (data[5 + byte_idx] >> bit_idx) & 1 == 1;
     }
 
     // Response: fc + start address + quantity

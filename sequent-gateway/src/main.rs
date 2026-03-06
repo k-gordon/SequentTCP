@@ -6,6 +6,7 @@ mod hal;
 mod i2c_recovery;
 mod modbus;
 mod registers;
+mod slave_map;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
@@ -23,6 +24,7 @@ use hal::megaind::MegaIndBoard;
 use hal::relay16::RelayBoard;
 use i2c_recovery::I2cWatchdog;
 use registers::{I4_20_IN_CHANNELS, OD_CHANNELS, OPTO_CHANNELS, RELAY16_CHANNELS, U0_10_IN_CHANNELS};
+use slave_map::SlaveMap;
 
 /// I²C bus device path (standard on Raspberry Pi).
 const I2C_BUS: &str = "/dev/i2c-1";
@@ -84,6 +86,30 @@ async fn main() -> Result<()> {
         info!("Opto-inputs also mapped to Holding Register 15");
     }
 
+    // ── Slave addressing ─────────────────────────────────────────────
+    let slave_map = Arc::new(SlaveMap::new(
+        args.relay_slave_id,
+        args.ind_slave_id,
+        args.single_slave,
+    ));
+
+    if args.single_slave {
+        info!(
+            "Modbus addressing: SINGLE-SLAVE (flat map on any Unit ID)"
+        );
+    } else {
+        info!(
+            "Modbus addressing: MULTI-SLAVE — Relay HAT = Unit {}, Industrial HAT = Unit {}",
+            args.relay_slave_id, args.ind_slave_id
+        );
+        if args.relay_slave_id == args.ind_slave_id {
+            tracing::warn!(
+                "relay-slave-id and ind-slave-id are both {}; only one board will be reachable",
+                args.relay_slave_id
+            );
+        }
+    }
+
     // ── Shared state ─────────────────────────────────────────────────
     let data_bank = Arc::new(RwLock::new(DataBank::new()));
     let running = Arc::new(AtomicBool::new(true));
@@ -117,7 +143,7 @@ async fn main() -> Result<()> {
 
     // ── Modbus TCP server (async) ────────────────────────────────────
     tokio::select! {
-        result = modbus::serve(&args.host, args.port, data_bank.clone()) => {
+        result = modbus::serve(&args.host, args.port, data_bank.clone(), slave_map.clone()) => {
             if let Err(e) = result {
                 error!("Modbus server error: {e:#}");
             }

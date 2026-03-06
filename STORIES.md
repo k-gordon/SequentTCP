@@ -261,10 +261,10 @@
 **so that** I can address them independently in my PLC program.
 
 **Acceptance Criteria:**
-- [ ] `--relay-slave-id <ID>` (default `1`)
-- [ ] `--ind-slave-id <ID>` (default `2`)
-- [ ] Modbus requests are routed by unit ID to the appropriate board's registers
-- [ ] Backward-compatible mode: `--single-slave` flag uses current flat mapping on Slave ID 1
+- [x] `--relay-slave-id <ID>` (default `1`)
+- [x] `--ind-slave-id <ID>` (default `2`)
+- [x] Modbus requests are routed by unit ID to the appropriate board's registers
+- [x] Backward-compatible mode: `--single-slave` flag uses current flat mapping on Slave ID 1
 
 ---
 
@@ -277,9 +277,9 @@
 **so that** I can address non-default stack positions.
 
 **Acceptance Criteria:**
-- [ ] `--ind-stack` and `--relay-stack` flags (already included in Story 9)
-- [ ] Stack ID validated 0–7 at startup; exit with clear error if out of range
-- [ ] Logged at startup: "Industrial HAT at I²C 0x51, Relay HAT at I²C 0x29"
+- [x] `--ind-stack` and `--relay-stack` flags (already included in Story 9)
+- [x] Stack ID validated 0–7 at startup; exit with clear error if out of range
+- [x] Logged at startup: "Industrial HAT at I²C 0x51, Relay HAT at I²C 0x29"
 
 ---
 
