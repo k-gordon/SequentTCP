@@ -1,0 +1,38 @@
+[Unit]
+Description=Sequent Gateway — Modbus TCP ↔ I²C bridge
+Documentation=https://github.com/Kenny/SequentTCP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+EnvironmentFile=/etc/sequent-gateway/sequent-gateway.env
+ExecStart=/usr/local/bin/sequent-gateway \
+    --host ${GATEWAY_HOST} \
+    --port ${GATEWAY_PORT} \
+    --ind-stack ${IND_STACK} \
+    --relay-stack ${RELAY_STACK} \
+    --boards-dir ${BOARDS_DIR} \
+    --log-interval ${LOG_INTERVAL}
+
+# Restart policy
+Restart=on-failure
+RestartSec=3
+
+# Security hardening
+User=root
+# I²C access requires root (or i2c group + udev rules).
+# To run as non-root, add the service user to the i2c group and
+# set User=sequent-gateway instead.
+
+# Resource limits
+LimitNOFILE=1024
+MemoryMax=64M
+
+# Logging — stdout/stderr → journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sequent-gateway
+
+[Install]
+WantedBy=multi-user.target

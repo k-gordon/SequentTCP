@@ -26,7 +26,48 @@ It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardwa
 
 ## Quick Start
 
-### Prerequisites
+### Option A: Rust Gateway (recommended)
+
+#### Prerequisites
+
+- Raspberry Pi with Sequent HATs installed and I²C enabled
+- Rust toolchain (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+
+#### Build & Run
+
+```bash
+cd sequent-gateway
+cargo build --release
+sudo ./target/release/sequent-gateway --host 0.0.0.0 --port 502 --ind-stack 1 --relay-stack 0
+```
+
+#### Install as a systemd Service
+
+```bash
+# Install binary
+sudo cp target/release/sequent-gateway /usr/local/bin/
+
+# Install config
+sudo mkdir -p /etc/sequent-gateway
+sudo cp deploy/sequent-gateway.env /etc/sequent-gateway/
+sudo cp -r boards/ /etc/sequent-gateway/boards/
+
+# Edit configuration to match your hardware
+sudo nano /etc/sequent-gateway/sequent-gateway.env
+
+# Install and start service
+sudo cp deploy/sequent-gateway.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now sequent-gateway
+
+# Check status / logs
+sudo systemctl status sequent-gateway
+sudo journalctl -u sequent-gateway -f
+```
+
+### Option B: Python Gateway (legacy PoC)
+
+#### Prerequisites
 
 - Raspberry Pi with Sequent HATs installed and I²C enabled
 - Sequent CLI tools installed (`megaind`, `16relind`)

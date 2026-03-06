@@ -202,12 +202,12 @@
 
 **Acceptance Criteria:**
 - [ ] Binary cross-compiles with `cross build --release --target aarch64-unknown-linux-gnu`
-- [ ] Binary runs on Raspberry Pi 4 (64-bit Raspberry Pi OS)
+- [x] Binary runs on Raspberry Pi 4 (64-bit Raspberry Pi OS)
 - [ ] Side-by-side test: run Python gateway and Rust gateway on same hardware, compare Modbus register reads from an external client
 - [ ] All 8 × 4-20 mA channels read correctly (within ±0.1 mA of Python output)
 - [ ] All 4 × 0-10 V channels read correctly
 - [ ] Opto inputs match
-- [ ] All 16 relays toggle correctly via coil writes
+- [x] All 16 relays toggle correctly via coil writes
 - [ ] All 4 OD outputs toggle correctly
 - [ ] Benchmark: full I/O cycle time logged and confirmed < 1 ms
 
@@ -224,12 +224,12 @@
 **so that** the Pi operates as a headless industrial appliance.
 
 **Acceptance Criteria:**
-- [ ] `deploy/sequent-gateway.service` unit file
-- [ ] `Type=exec`, `Restart=on-failure`, `RestartSec=3`
-- [ ] `After=network-online.target`
-- [ ] `ExecStart=` points to installed binary with CLI flags from an `EnvironmentFile`
-- [ ] `deploy/sequent-gateway.env` example environment file
-- [ ] Install instructions in README
+- [x] `deploy/sequent-gateway.service` unit file
+- [x] `Type=exec`, `Restart=on-failure`, `RestartSec=3`
+- [x] `After=network-online.target`
+- [x] `ExecStart=` points to installed binary with CLI flags from an `EnvironmentFile`
+- [x] `deploy/sequent-gateway.env` example environment file
+- [x] Install instructions in README
 
 ---
 
