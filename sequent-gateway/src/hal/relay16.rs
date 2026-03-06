@@ -126,6 +126,21 @@ impl RelayBoard {
         Ok(())
     }
 
+    /// Read the current relay output state as a bitmask.
+    ///
+    /// Returns a `u16` where bit 0 = relay 1, bit 1 = relay 2, … bit 15 = relay 16.
+    /// The raw I/O-expander bit order is un-remapped back to logical relay order.
+    pub fn read_relay_state(&mut self) -> Result<u16> {
+        let raw = self.read_output_reg()?;
+        let mut logical: u16 = 0;
+        for (relay_idx, &bit_pos) in self.ch_remap.iter().enumerate() {
+            if raw & (1 << bit_pos) != 0 {
+                logical |= 1 << relay_idx;
+            }
+        }
+        Ok(logical)
+    }
+
     /// Return the stack ID (for logging).
     pub fn stack_id(&self) -> u8 {
         self.stack_id

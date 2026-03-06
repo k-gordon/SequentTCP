@@ -54,6 +54,7 @@ pub mod relay16 {
             )
         }
         pub fn set_relay(&mut self, _ch: u8, _state: bool) -> Result<()> { unreachable!() }
+        pub fn read_relay_state(&mut self) -> Result<u16> { unreachable!() }
         pub fn stack_id(&self) -> u8 { self._stack_id }
     }
 }

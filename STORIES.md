@@ -31,8 +31,8 @@
 - [x] `cargo init sequent-gateway` with `edition = "2021"`
 - [x] `Cargo.toml` includes dependencies: `i2cdev`, `tokio`, `clap`, `tracing`, `tracing-subscriber` (custom Modbus TCP server instead of `tokio-modbus`)
 - [x] `.cargo/config.toml` configured for `aarch64-unknown-linux-gnu` and `armv7-unknown-linux-gnueabihf` targets
-- [ ] `cross` or `cargo-zigbuild` builds a working ARM binary
-- [ ] CI-ready `Makefile` or `justfile` with `build`, `build-release`, `cross` targets
+- [x] `cross` or `cargo-zigbuild` builds a working ARM binary
+- [x] CI-ready `Makefile` or `justfile` with `build`, `build-release`, `cross` targets
 
 ---
 
@@ -87,7 +87,7 @@
 - [x] `src/hal/relay16.rs` — struct wrapping `i2cdev::linux::LinuxI2CDevice`
 - [x] `new(bus: &str, stack_id: u8)` constructor opens `/dev/i2c-1` at address `0x20 + stack_id`
 - [x] `set_relay(channel: u8, state: bool)` — writes relay set/clr register with channel bitmask
-- [ ] `read_relay_state() -> u16` — reads current relay bitmask (if supported by HAT firmware)
+- [x] `read_relay_state() -> u16` — reads current relay bitmask (if supported by HAT firmware)
 - [x] Errors are returned as `Result<T, anyhow::Error>`
 
 ---
