@@ -94,20 +94,38 @@ pub const I2C_MEM_1WB_T1: u8 = 0xAE; // 174
 // 16-Relay HAT — I²C base address: 0x20 + stack_id
 // ============================================================================
 //
-// NOTE: Verify the base address against your specific hardware revision.
-// The register layout follows the standard Sequent set/clr convention.
+// The 16-Relay HAT uses a PCA9535 I/O expander, NOT a Sequent custom MCU.
+// I²C address = (BASE + stack) ^ 0x07  (active-low address pins).
+// Relay control is read-modify-write on the OUTPORT register (0x02).
+// Channel numbering is remapped: relay 1 → bit 15, relay 16 → bit 0.
 
-/// Base I²C address for the 16-Relay HAT.
+/// Base I²C address for the 16-Relay HAT (PCA9535).
 pub const RELAY16_BASE_ADDR: u16 = 0x20;
 
-/// Current relay state bitmask (2 bytes LE for 16 relays, read-only).
-pub const RELAY16_MEM_RELAY_VAL: u8 = 0x00;
+/// Alternate base address (fallback, used by some hardware revisions).
+pub const RELAY16_ALTERNATE_BASE_ADDR: u16 = 0x38;
 
-/// Write relay number (1–16) to SET (turn ON).
-pub const RELAY16_MEM_RELAY_SET: u8 = 0x01;
+/// PCA9535 Input Port register (read actual pin states, 2 bytes LE).
+pub const RELAY16_INPORT_REG: u8 = 0x00;
 
-/// Write relay number (1–16) to CLEAR (turn OFF).
-pub const RELAY16_MEM_RELAY_CLR: u8 = 0x02;
+/// PCA9535 Output Port register (read/write relay bitmask, 2 bytes LE).
+pub const RELAY16_OUTPORT_REG: u8 = 0x02;
+
+/// PCA9535 Polarity Inversion register (2 bytes).
+pub const RELAY16_POLINV_REG: u8 = 0x04;
+
+/// PCA9535 Configuration register (0 = output, 1 = input, 2 bytes LE).
+pub const RELAY16_CFG_REG: u8 = 0x06;
+
+/// Channel-to-bit remapping: relay N (1-based) maps to bit `RELAY_CH_REMAP[N-1]`.
+/// Relay 1 = bit 15, relay 2 = bit 14, … relay 16 = bit 0.
+pub const RELAY_CH_REMAP: [u8; 16] = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
+
+/// Bitmask remapping table: relay N (0-indexed) → `RELAY_MASK_REMAP[N]`.
+pub const RELAY_MASK_REMAP: [u16; 16] = [
+    0x8000, 0x4000, 0x2000, 0x1000, 0x0800, 0x0400, 0x0200, 0x0100,
+    0x0080, 0x0040, 0x0020, 0x0010, 0x0008, 0x0004, 0x0002, 0x0001,
+];
 
 // ============================================================================
 // Shared constants

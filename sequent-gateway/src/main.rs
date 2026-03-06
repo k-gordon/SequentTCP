@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     info!(
         "16-Relay HAT:   stack {} → I²C 0x{:02X}",
         args.relay_stack,
-        RELAY16_BASE_ADDR + args.relay_stack as u16
+        (RELAY16_BASE_ADDR + args.relay_stack as u16) ^ 0x07
     );
     if args.map_opto_to_reg {
         info!("Opto-inputs also mapped to Holding Register 15");

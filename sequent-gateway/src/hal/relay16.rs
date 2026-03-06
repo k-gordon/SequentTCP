@@ -1,15 +1,16 @@
 //! I²C HAL for the Sequent Microsystems 16-Relay HAT.
 //!
-//! Uses the same set/clr register convention as the MegaInd board.
+//! The board uses a **PCA9535 I/O expander**, not a Sequent custom MCU.
+//! Relay state is controlled via read-modify-write on the Output Port
+//! register (`0x02`).  Channel numbering is remapped: relay 1 → bit 15,
+//! relay 16 → bit 0.
 //!
-//! **NOTE:** The base address (`0x20`) should be verified against your
-//! specific hardware revision. Adjust `RELAY16_BASE_ADDR` in
-//! `registers.rs` if needed.
+//! I²C address = `(0x20 + stack_id) ^ 0x07`  (active-low address jumpers).
 
 use anyhow::{Context, Result};
 use i2cdev::core::I2CDevice;
 use i2cdev::linux::LinuxI2CDevice;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::registers::*;
 
@@ -22,27 +23,60 @@ pub struct RelayBoard {
 impl RelayBoard {
     /// Open the I²C bus for a 16-Relay board at the given stack level (0–7).
     ///
-    /// The I²C slave address is `0x20 + stack_id`.
+    /// Address = `(0x20 + stack_id) ^ 0x07`  (Sequent active-low convention).
     pub fn new(bus: &str, stack_id: u8) -> Result<Self> {
-        let addr = RELAY16_BASE_ADDR + stack_id as u16;
-        let dev = LinuxI2CDevice::new(bus, addr)
+        let addr = (RELAY16_BASE_ADDR + stack_id as u16) ^ 0x07;
+        let mut dev = LinuxI2CDevice::new(bus, addr)
             .with_context(|| format!("Failed to open {bus} at 0x{addr:02X}"))?;
         debug!("Opened 16-Relay HAT at {bus} 0x{addr:02X} (stack {stack_id})");
+
+        // ── Initialise PCA9535: configure all pins as outputs ────────
+        let mut cfg_buf = [0u8; 2];
+        dev.write(&[RELAY16_CFG_REG])
+            .with_context(|| "Failed to set CFG register address")?;
+        dev.read(&mut cfg_buf)
+            .with_context(|| "Failed to read CFG register")?;
+        let cfg_val = u16::from_le_bytes(cfg_buf);
+
+        if cfg_val != 0 {
+            info!("16-Relay HAT: configuring I/O expander pins as outputs");
+            // All outputs LOW first, then set direction to output
+            let zero = [0u8; 2];
+            dev.write(&[RELAY16_OUTPORT_REG, zero[0], zero[1]])
+                .with_context(|| "Failed to clear OUTPORT register")?;
+            dev.write(&[RELAY16_CFG_REG, zero[0], zero[1]])
+                .with_context(|| "Failed to write CFG register")?;
+        }
+
         Ok(Self { dev, stack_id })
     }
 
-    /// Write a register address followed by data in a single transaction.
-    fn i2c_write(&mut self, register: u8, data: &[u8]) -> Result<()> {
-        let mut buf = Vec::with_capacity(1 + data.len());
-        buf.push(register);
-        buf.extend_from_slice(data);
+    // ── Internal helpers ─────────────────────────────────────────────
+
+    /// Read the 16-bit Output Port register (raw I/O-expander bit order).
+    fn read_output_reg(&mut self) -> Result<u16> {
+        let mut buf = [0u8; 2];
         self.dev
-            .write(&buf)
-            .with_context(|| format!("I²C write {} bytes to 0x{register:02X}", data.len()))?;
+            .write(&[RELAY16_OUTPORT_REG])
+            .with_context(|| "Failed to set OUTPORT address")?;
+        self.dev
+            .read(&mut buf)
+            .with_context(|| "Failed to read OUTPORT register")?;
+        Ok(u16::from_le_bytes(buf))
+    }
+
+    /// Write a 16-bit value to the Output Port register.
+    fn write_output_reg(&mut self, val: u16) -> Result<()> {
+        let bytes = val.to_le_bytes();
+        self.dev
+            .write(&[RELAY16_OUTPORT_REG, bytes[0], bytes[1]])
+            .with_context(|| "Failed to write OUTPORT register")?;
         Ok(())
     }
 
-    /// Set a relay on or off.
+    // ── Public API ───────────────────────────────────────────────────
+
+    /// Set a relay on or off (read-modify-write with channel remapping).
     ///
     /// `channel` is 1-based (1–16).
     pub fn set_relay(&mut self, channel: u8, state: bool) -> Result<()> {
@@ -50,12 +84,21 @@ impl RelayBoard {
             (1..=RELAY16_CHANNELS as u8).contains(&channel),
             "Relay channel must be 1–{RELAY16_CHANNELS}, got {channel}"
         );
-        let register = if state {
-            RELAY16_MEM_RELAY_SET
+
+        // Read current output state
+        let mut io_val = self.read_output_reg()?;
+
+        // Apply change using the channel-to-bit remap
+        let bit = RELAY_CH_REMAP[(channel - 1) as usize];
+        if state {
+            io_val |= 1 << bit;
         } else {
-            RELAY16_MEM_RELAY_CLR
-        };
-        self.i2c_write(register, &[channel])?;
+            io_val &= !(1 << bit);
+        }
+
+        // Write back
+        self.write_output_reg(io_val)?;
+
         debug!(
             "Relay board stack {} relay {} → {}",
             self.stack_id,
