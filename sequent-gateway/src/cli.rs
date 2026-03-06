@@ -36,4 +36,8 @@ pub struct Cli {
     /// Heartbeat log interval in seconds
     #[arg(long, default_value_t = 5)]
     pub log_interval: u64,
+
+    /// Consecutive I²C failures before attempting GPIO bus recovery (0 = disabled)
+    #[arg(long, default_value_t = 10)]
+    pub i2c_reset_threshold: u32,
 }

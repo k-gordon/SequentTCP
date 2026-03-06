@@ -3,6 +3,7 @@ mod cache;
 mod cli;
 mod databank;
 mod hal;
+mod i2c_recovery;
 mod modbus;
 mod registers;
 
@@ -20,6 +21,7 @@ use cli::Cli;
 use databank::DataBank;
 use hal::megaind::MegaIndBoard;
 use hal::relay16::RelayBoard;
+use i2c_recovery::I2cWatchdog;
 use registers::{I4_20_IN_CHANNELS, OD_CHANNELS, OPTO_CHANNELS, RELAY16_CHANNELS, U0_10_IN_CHANNELS};
 
 /// I²C bus device path (standard on Raspberry Pi).
@@ -94,6 +96,7 @@ async fn main() -> Result<()> {
         let relay_stack = args.relay_stack;
         let map_opto = args.map_opto_to_reg;
         let log_interval = args.log_interval;
+        let i2c_reset_threshold = args.i2c_reset_threshold;
 
         std::thread::Builder::new()
             .name("i2c-poll".into())
@@ -107,6 +110,7 @@ async fn main() -> Result<()> {
                     log_interval,
                     megaind_def,
                     relay16_def,
+                    i2c_reset_threshold,
                 );
             })?
     };
@@ -154,6 +158,7 @@ fn poll_loop(
     log_interval: u64,
     megaind_def: BoardDef,
     relay16_def: BoardDef,
+    i2c_reset_threshold: u32,
 ) {
     // ── Initialise hardware ──────────────────────────────────────────
     let mut ind_board = match MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def) {
@@ -178,8 +183,13 @@ fn poll_loop(
     };
 
     let mut cache = OutputCache::new();
+    let mut watchdog = I2cWatchdog::new(i2c_reset_threshold);
     let mut last_heartbeat = Instant::now();
     let heartbeat_duration = Duration::from_secs(log_interval);
+
+    if i2c_reset_threshold > 0 {
+        info!("I²C bus recovery enabled (threshold: {i2c_reset_threshold} consecutive failures)");
+    }
 
     info!("I²C poll loop started ({}Hz)", 1000 / POLL_INTERVAL.as_millis());
 
@@ -190,23 +200,46 @@ fn poll_loop(
         // 1. READ HARDWARE ────────────────────────────────────────────
         let ma_inputs = ind_board
             .as_mut()
-            .and_then(|b| b.read_4_20ma_inputs().ok())
+            .and_then(|b| match b.read_4_20ma_inputs() {
+                Ok(v) => { watchdog.record_success(); Some(v) }
+                Err(_) => { if watchdog.record_failure() { /* handled below */ } None }
+            })
             .unwrap_or([0.0; I4_20_IN_CHANNELS]);
 
         let v_inputs = ind_board
             .as_mut()
-            .and_then(|b| b.read_0_10v_inputs().ok())
+            .and_then(|b| match b.read_0_10v_inputs() {
+                Ok(v) => { watchdog.record_success(); Some(v) }
+                Err(_) => { if watchdog.record_failure() { /* handled below */ } None }
+            })
             .unwrap_or([0.0; U0_10_IN_CHANNELS]);
 
         let voltage = ind_board
             .as_mut()
-            .and_then(|b| b.read_system_voltage().ok())
+            .and_then(|b| match b.read_system_voltage() {
+                Ok(v) => { watchdog.record_success(); Some(v) }
+                Err(_) => { if watchdog.record_failure() { /* handled below */ } None }
+            })
             .unwrap_or(0.0);
 
         let (opto_val, opto_bits) = ind_board
             .as_mut()
-            .and_then(|b| b.read_opto_inputs().ok())
+            .and_then(|b| match b.read_opto_inputs() {
+                Ok(v) => { watchdog.record_success(); Some(v) }
+                Err(_) => { if watchdog.record_failure() { /* handled below */ } None }
+            })
             .unwrap_or((0, [false; OPTO_CHANNELS]));
+
+        // ── I²C bus recovery check ──────────────────────────────────
+        if watchdog.consecutive_failures() >= i2c_reset_threshold && i2c_reset_threshold > 0 {
+            if watchdog.attempt_recovery() {
+                // Re-open I²C device file descriptors
+                ind_board = MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def).ok();
+                rel_board = RelayBoard::new(I2C_BUS, relay_stack, &relay16_def).ok();
+                cache = OutputCache::new(); // force re-sync all outputs
+                continue; // skip rest of this cycle
+            }
+        }
 
         // 2. UPDATE MODBUS DATA BANK ──────────────────────────────────
         {

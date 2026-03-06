@@ -242,11 +242,11 @@
 **so that** the system self-heals without a manual reboot.
 
 **Acceptance Criteria:**
-- [ ] Detect hung bus: N consecutive I²C read failures within a window
-- [ ] Recovery: toggle SCL line via GPIO to clock out stuck slave (9-clock-pulse recovery)
-- [ ] Log recovery attempt at `WARN` level
-- [ ] Configurable failure threshold (`--i2c-reset-threshold`, default `10`)
-- [ ] After reset, re-open I²C device file descriptors
+- [x] Detect hung bus: N consecutive I²C read failures within a window
+- [x] Recovery: toggle SCL line via GPIO to clock out stuck slave (9-clock-pulse recovery)
+- [x] Log recovery attempt at `WARN` level
+- [x] Configurable failure threshold (`--i2c-reset-threshold`, default `10`)
+- [x] After reset, re-open I²C device file descriptors
 
 ---
 
