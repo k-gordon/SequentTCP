@@ -12,24 +12,61 @@ use i2cdev::core::I2CDevice;
 use i2cdev::linux::LinuxI2CDevice;
 use tracing::{debug, warn};
 
-use crate::registers::*;
+use crate::board_def::BoardDef;
+use crate::registers::{I4_20_IN_CHANNELS, OD_CHANNELS, OPTO_CHANNELS, U0_10_IN_CHANNELS};
 
-/// HAL wrapper for a single MegaInd Industrial HAT.
+/// Resolved register addresses (extracted from [`BoardDef`] at construction).
+struct Regs {
+    relay_set: u8,
+    relay_clr: u8,
+    opto_in: u8,
+    i4_20_in: u8,
+    u0_10_in: u8,
+    diag_24v: u8,
+    revision_major: u8,
+    voltage_scale: f32,
+}
+
+impl Regs {
+    fn from_def(def: &BoardDef) -> Self {
+        let r = &def.registers;
+        Self {
+            relay_set: r.relay_set.unwrap_or(0x01),
+            relay_clr: r.relay_clr.unwrap_or(0x02),
+            opto_in: r.opto_in.unwrap_or(0x03),
+            i4_20_in: r.i4_20_in.unwrap_or(0x2C),
+            u0_10_in: r.u0_10_in.unwrap_or(0x1C),
+            diag_24v: r.diag_24v.unwrap_or(0x73),
+            revision_major: r.revision_major.unwrap_or(0x78),
+            voltage_scale: r.voltage_scale.unwrap_or(1000.0),
+        }
+    }
+}
+
+/// HAL wrapper for a Sequent custom-MCU Industrial HAT.
 pub struct MegaIndBoard {
     dev: LinuxI2CDevice,
     stack_id: u8,
+    regs: Regs,
 }
 
 impl MegaIndBoard {
-    /// Open the I²C bus for a MegaInd board at the given stack level (0–7).
+    /// Open the I²C bus for an Industrial board described by `def`.
     ///
-    /// The I²C slave address is `0x50 + stack_id`.
-    pub fn new(bus: &str, stack_id: u8) -> Result<Self> {
-        let addr = MEGAIND_BASE_ADDR + stack_id as u16;
+    /// The address is computed from the board definition.
+    pub fn new(bus: &str, stack_id: u8, def: &BoardDef) -> Result<Self> {
+        let addr = def.address.resolve(stack_id);
         let dev = LinuxI2CDevice::new(bus, addr)
             .with_context(|| format!("Failed to open {bus} at 0x{addr:02X}"))?;
-        debug!("Opened MegaInd HAT at {bus} 0x{addr:02X} (stack {stack_id})");
-        Ok(Self { dev, stack_id })
+        debug!(
+            "Opened {} at {bus} 0x{addr:02X} (stack {stack_id})",
+            def.board.name
+        );
+        Ok(Self {
+            dev,
+            stack_id,
+            regs: Regs::from_def(def),
+        })
     }
 
     // ── Low-level I²C helpers ────────────────────────────────────────
@@ -70,7 +107,7 @@ impl MegaIndBoard {
     /// Returns `(bitmask, [bool; 8])` where bit 0 = channel 1.
     pub fn read_opto_inputs(&mut self) -> Result<(u8, [bool; OPTO_CHANNELS])> {
         let mut buf = [0u8; 1];
-        self.i2c_read(I2C_MEM_OPTO_IN_VAL, &mut buf)?;
+        self.i2c_read(self.regs.opto_in, &mut buf)?;
         let val = buf[0];
         let mut bits = [false; OPTO_CHANNELS];
         for i in 0..OPTO_CHANNELS {
@@ -86,9 +123,9 @@ impl MegaIndBoard {
     pub fn read_4_20ma_inputs(&mut self) -> Result<[f32; I4_20_IN_CHANNELS]> {
         let mut readings = [0.0f32; I4_20_IN_CHANNELS];
         for ch in 0..I4_20_IN_CHANNELS {
-            let reg = I2C_MEM_I4_20_IN_VAL1 + (ch as u8) * 2;
+            let reg = self.regs.i4_20_in + (ch as u8) * 2;
             match self.read_u16_le(reg) {
-                Ok(raw) => readings[ch] = raw as f32 / VOLT_TO_MILLIVOLT,
+                Ok(raw) => readings[ch] = raw as f32 / self.regs.voltage_scale,
                 Err(e) => warn!("4-20mA ch{}: {e:#}", ch + 1),
             }
         }
@@ -101,9 +138,9 @@ impl MegaIndBoard {
     pub fn read_0_10v_inputs(&mut self) -> Result<[f32; U0_10_IN_CHANNELS]> {
         let mut readings = [0.0f32; U0_10_IN_CHANNELS];
         for ch in 0..U0_10_IN_CHANNELS {
-            let reg = I2C_MEM_U0_10_IN_VAL1 + (ch as u8) * 2;
+            let reg = self.regs.u0_10_in + (ch as u8) * 2;
             match self.read_u16_le(reg) {
-                Ok(raw) => readings[ch] = raw as f32 / VOLT_TO_MILLIVOLT,
+                Ok(raw) => readings[ch] = raw as f32 / self.regs.voltage_scale,
                 Err(e) => warn!("0-10V ch{}: {e:#}", ch + 1),
             }
         }
@@ -114,8 +151,8 @@ impl MegaIndBoard {
     ///
     /// Returns volts (e.g. 24.12).
     pub fn read_system_voltage(&mut self) -> Result<f32> {
-        let raw = self.read_u16_le(I2C_MEM_DIAG_24V)?;
-        Ok(raw as f32 / VOLT_TO_MILLIVOLT)
+        let raw = self.read_u16_le(self.regs.diag_24v)?;
+        Ok(raw as f32 / self.regs.voltage_scale)
     }
 
     /// Set an open-drain output (1-based channel, 1–4) on or off.
@@ -128,9 +165,9 @@ impl MegaIndBoard {
             "OD channel must be 1–{OD_CHANNELS}, got {channel}"
         );
         let register = if state {
-            I2C_MEM_RELAY_SET
+            self.regs.relay_set
         } else {
-            I2C_MEM_RELAY_CLR
+            self.regs.relay_clr
         };
         self.i2c_write(register, &[channel])?;
         debug!(
@@ -145,7 +182,7 @@ impl MegaIndBoard {
     /// Read firmware version (major, minor).
     pub fn read_firmware_version(&mut self) -> Result<(u8, u8)> {
         let mut buf = [0u8; 2];
-        self.i2c_read(I2C_MEM_REVISION_MAJOR, &mut buf)?;
+        self.i2c_read(self.regs.revision_major, &mut buf)?;
         Ok((buf[0], buf[1]))
     }
 

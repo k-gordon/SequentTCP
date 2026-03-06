@@ -1,54 +1,71 @@
-//! I²C HAL for the Sequent Microsystems 16-Relay HAT.
+//! I²C HAL for PCA9535-based relay boards (e.g. Sequent 16-Relay HAT).
 //!
-//! The board uses a **PCA9535 I/O expander**, not a Sequent custom MCU.
-//! Relay state is controlled via read-modify-write on the Output Port
-//! register (`0x02`).  Channel numbering is remapped: relay 1 → bit 15,
-//! relay 16 → bit 0.
+//! All hardware-specific parameters (address, registers, channel remap)
+//! come from a [`BoardDef`] loaded from TOML at runtime.
 //!
-//! I²C address = `(0x20 + stack_id) ^ 0x07`  (active-low address jumpers).
+//! Protocol: read-modify-write on the PCA9535 Output Port register.
+//! Channel numbering is remapped according to the board definition.
 
 use anyhow::{Context, Result};
 use i2cdev::core::I2CDevice;
 use i2cdev::linux::LinuxI2CDevice;
 use tracing::{debug, info};
 
-use crate::registers::*;
+use crate::board_def::BoardDef;
 
-/// HAL wrapper for a single 16-Relay HAT.
+/// HAL wrapper for a PCA9535-based relay board.
 pub struct RelayBoard {
     dev: LinuxI2CDevice,
     stack_id: u8,
+    outport_reg: u8,
+    ch_remap: Vec<u8>,
 }
 
 impl RelayBoard {
-    /// Open the I²C bus for a 16-Relay board at the given stack level (0–7).
+    /// Open the I²C bus for a relay board described by `def`.
     ///
-    /// Address = `(0x20 + stack_id) ^ 0x07`  (Sequent active-low convention).
-    pub fn new(bus: &str, stack_id: u8) -> Result<Self> {
-        let addr = (RELAY16_BASE_ADDR + stack_id as u16) ^ 0x07;
+    /// The address and register layout are read from the board definition.
+    pub fn new(bus: &str, stack_id: u8, def: &BoardDef) -> Result<Self> {
+        let pca = def
+            .pca9535
+            .as_ref()
+            .context("Board definition missing [pca9535] section")?;
+        let ch_remap = def
+            .channels
+            .relay_remap
+            .clone()
+            .unwrap_or_else(|| vec![15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
+
+        let addr = def.address.resolve(stack_id);
         let mut dev = LinuxI2CDevice::new(bus, addr)
             .with_context(|| format!("Failed to open {bus} at 0x{addr:02X}"))?;
-        debug!("Opened 16-Relay HAT at {bus} 0x{addr:02X} (stack {stack_id})");
+        debug!(
+            "Opened {} at {bus} 0x{addr:02X} (stack {stack_id})",
+            def.board.name
+        );
 
         // ── Initialise PCA9535: configure all pins as outputs ────────
         let mut cfg_buf = [0u8; 2];
-        dev.write(&[RELAY16_CFG_REG])
+        dev.write(&[pca.config_reg])
             .with_context(|| "Failed to set CFG register address")?;
         dev.read(&mut cfg_buf)
             .with_context(|| "Failed to read CFG register")?;
         let cfg_val = u16::from_le_bytes(cfg_buf);
 
         if cfg_val != 0 {
-            info!("16-Relay HAT: configuring I/O expander pins as outputs");
-            // All outputs LOW first, then set direction to output
-            let zero = [0u8; 2];
-            dev.write(&[RELAY16_OUTPORT_REG, zero[0], zero[1]])
+            info!("{}: configuring I/O expander pins as outputs", def.board.name);
+            dev.write(&[pca.outport_reg, 0, 0])
                 .with_context(|| "Failed to clear OUTPORT register")?;
-            dev.write(&[RELAY16_CFG_REG, zero[0], zero[1]])
+            dev.write(&[pca.config_reg, 0, 0])
                 .with_context(|| "Failed to write CFG register")?;
         }
 
-        Ok(Self { dev, stack_id })
+        Ok(Self {
+            dev,
+            stack_id,
+            outport_reg: pca.outport_reg,
+            ch_remap,
+        })
     }
 
     // ── Internal helpers ─────────────────────────────────────────────
@@ -57,7 +74,7 @@ impl RelayBoard {
     fn read_output_reg(&mut self) -> Result<u16> {
         let mut buf = [0u8; 2];
         self.dev
-            .write(&[RELAY16_OUTPORT_REG])
+            .write(&[self.outport_reg])
             .with_context(|| "Failed to set OUTPORT address")?;
         self.dev
             .read(&mut buf)
@@ -69,7 +86,7 @@ impl RelayBoard {
     fn write_output_reg(&mut self, val: u16) -> Result<()> {
         let bytes = val.to_le_bytes();
         self.dev
-            .write(&[RELAY16_OUTPORT_REG, bytes[0], bytes[1]])
+            .write(&[self.outport_reg, bytes[0], bytes[1]])
             .with_context(|| "Failed to write OUTPORT register")?;
         Ok(())
     }
@@ -78,18 +95,19 @@ impl RelayBoard {
 
     /// Set a relay on or off (read-modify-write with channel remapping).
     ///
-    /// `channel` is 1-based (1–16).
+    /// `channel` is 1-based (1–N where N = relay count from definition).
     pub fn set_relay(&mut self, channel: u8, state: bool) -> Result<()> {
+        let num_relays = self.ch_remap.len();
         anyhow::ensure!(
-            (1..=RELAY16_CHANNELS as u8).contains(&channel),
-            "Relay channel must be 1–{RELAY16_CHANNELS}, got {channel}"
+            (1..=num_relays as u8).contains(&channel),
+            "Relay channel must be 1–{num_relays}, got {channel}"
         );
 
         // Read current output state
         let mut io_val = self.read_output_reg()?;
 
         // Apply change using the channel-to-bit remap
-        let bit = RELAY_CH_REMAP[(channel - 1) as usize];
+        let bit = self.ch_remap[(channel - 1) as usize];
         if state {
             io_val |= 1 << bit;
         } else {

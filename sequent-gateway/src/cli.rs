@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 /// Modbus TCP ↔ I²C gateway for Sequent Microsystems HATs.
@@ -26,6 +28,10 @@ pub struct Cli {
     /// I²C stack level for the 16-Relay HAT [0–7]
     #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=7))]
     pub relay_stack: u8,
+
+    /// Directory containing board definition TOML files
+    #[arg(long, default_value = "boards")]
+    pub boards_dir: PathBuf,
 
     /// Heartbeat log interval in seconds
     #[arg(long, default_value_t = 5)]

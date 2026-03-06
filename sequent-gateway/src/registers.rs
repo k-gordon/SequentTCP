@@ -1,9 +1,20 @@
 //! I²C register map for Sequent Microsystems HATs.
 //!
+//! These constants are the **compiled reference** for register addresses
+//! and channel counts.  At runtime, board definitions loaded from TOML
+//! (see [`crate::board_def`]) override the register addresses.  The
+//! constants here are kept for:
+//! - Unit tests that verify TOML defaults match the hardware spec
+//! - Documentation / cross-reference against vendor C headers
+//! - Array-size constants (`OPTO_CHANNELS`, etc.) used in type signatures
+//!
 //! Ported from:
 //! - MegaInd: <https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/megaind.h>
 //! - MegaInd Python: <https://github.com/SequentMicrosystems/megaind-rpi/blob/main/python/megaind/__init__.py>
-//! - 16-Relay: register layout follows the same set/clr convention.
+//! - 16-Relay: <https://github.com/SequentMicrosystems/16relind-rpi>
+
+// Register address constants are used in board_def tests as reference values.
+#![allow(dead_code)]
 
 // ============================================================================
 // MegaInd (Industrial) HAT — I²C base address: 0x50 + stack_id

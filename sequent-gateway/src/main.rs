@@ -1,3 +1,4 @@
+mod board_def;
 mod cache;
 mod cli;
 mod databank;
@@ -13,12 +14,13 @@ use anyhow::Result;
 use clap::Parser;
 use tracing::{debug, error, info};
 
+use board_def::BoardDef;
 use cache::OutputCache;
 use cli::Cli;
 use databank::DataBank;
 use hal::megaind::MegaIndBoard;
 use hal::relay16::RelayBoard;
-use registers::*;
+use registers::{I4_20_IN_CHANNELS, OD_CHANNELS, OPTO_CHANNELS, RELAY16_CHANNELS, U0_10_IN_CHANNELS};
 
 /// I²C bus device path (standard on Raspberry Pi).
 const I2C_BUS: &str = "/dev/i2c-1";
@@ -50,19 +52,31 @@ async fn main() -> Result<()> {
         }
     }
 
+    // ── Board definitions ────────────────────────────────────────────
+    let megaind_def = BoardDef::load_or_default(
+        &args.boards_dir.join("megaind.toml"),
+        BoardDef::default_megaind(),
+    );
+    let relay16_def = BoardDef::load_or_default(
+        &args.boards_dir.join("relay16.toml"),
+        BoardDef::default_relay16(),
+    );
+
     info!(
         "Sequent Gateway v{} starting",
         env!("CARGO_PKG_VERSION")
     );
     info!(
-        "Industrial HAT: stack {} → I²C 0x{:02X}",
+        "Industrial HAT: stack {} → I²C 0x{:02X} ({})",
         args.ind_stack,
-        MEGAIND_BASE_ADDR + args.ind_stack as u16
+        megaind_def.address.resolve(args.ind_stack),
+        megaind_def.board.name
     );
     info!(
-        "16-Relay HAT:   stack {} → I²C 0x{:02X}",
+        "16-Relay HAT:   stack {} → I²C 0x{:02X} ({})",
         args.relay_stack,
-        (RELAY16_BASE_ADDR + args.relay_stack as u16) ^ 0x07
+        relay16_def.address.resolve(args.relay_stack),
+        relay16_def.board.name
     );
     if args.map_opto_to_reg {
         info!("Opto-inputs also mapped to Holding Register 15");
@@ -84,7 +98,16 @@ async fn main() -> Result<()> {
         std::thread::Builder::new()
             .name("i2c-poll".into())
             .spawn(move || {
-                poll_loop(db, run, ind_stack, relay_stack, map_opto, log_interval);
+                poll_loop(
+                    db,
+                    run,
+                    ind_stack,
+                    relay_stack,
+                    map_opto,
+                    log_interval,
+                    megaind_def,
+                    relay16_def,
+                );
             })?
     };
 
@@ -129,9 +152,11 @@ fn poll_loop(
     relay_stack: u8,
     map_opto: bool,
     log_interval: u64,
+    megaind_def: BoardDef,
+    relay16_def: BoardDef,
 ) {
     // ── Initialise hardware ──────────────────────────────────────────
-    let mut ind_board = match MegaIndBoard::new(I2C_BUS, ind_stack) {
+    let mut ind_board = match MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def) {
         Ok(mut b) => {
             if let Ok((major, minor)) = b.read_firmware_version() {
                 info!("Industrial HAT firmware: v{major:02}.{minor:02}");
@@ -144,7 +169,7 @@ fn poll_loop(
         }
     };
 
-    let mut rel_board = match RelayBoard::new(I2C_BUS, relay_stack) {
+    let mut rel_board = match RelayBoard::new(I2C_BUS, relay_stack, &relay16_def) {
         Ok(b) => Some(b),
         Err(e) => {
             error!("Failed to open 16-Relay HAT: {e:#}");

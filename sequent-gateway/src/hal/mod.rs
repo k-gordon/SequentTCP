@@ -13,14 +13,15 @@ pub mod relay16;
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 pub mod megaind {
     use anyhow::Result;
-    use crate::registers::*;
+    use crate::board_def::BoardDef;
+    use crate::registers::{OPTO_CHANNELS, I4_20_IN_CHANNELS, U0_10_IN_CHANNELS};
 
     pub struct MegaIndBoard {
         _stack_id: u8,
     }
 
     impl MegaIndBoard {
-        pub fn new(_bus: &str, _stack_id: u8) -> Result<Self> {
+        pub fn new(_bus: &str, _stack_id: u8, _def: &BoardDef) -> Result<Self> {
             anyhow::bail!(
                 "I²C is only available on Linux. \
                  Cross-compile with: cross build --release --target aarch64-unknown-linux-gnu"
@@ -39,13 +40,14 @@ pub mod megaind {
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 pub mod relay16 {
     use anyhow::Result;
+    use crate::board_def::BoardDef;
 
     pub struct RelayBoard {
         _stack_id: u8,
     }
 
     impl RelayBoard {
-        pub fn new(_bus: &str, _stack_id: u8) -> Result<Self> {
+        pub fn new(_bus: &str, _stack_id: u8, _def: &BoardDef) -> Result<Self> {
             anyhow::bail!(
                 "I²C is only available on Linux. \
                  Cross-compile with: cross build --release --target aarch64-unknown-linux-gnu"

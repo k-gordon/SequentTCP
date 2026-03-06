@@ -1,0 +1,30 @@
+# Board Definition: Sequent 16-Relay HAT
+# https://sequentmicrosystems.com/products/16-relays-stackable-card-for-raspberry-pi
+#
+# Protocol: PCA9535 I/O expander (NOT a Sequent custom MCU).
+# I²C address = (base + stack_id) ^ 0x07  (active-low address jumpers).
+# Relay control via read-modify-write on the Output Port register.
+#
+# Register map derived from:
+#   https://github.com/SequentMicrosystems/16relind-rpi
+#
+# Drop this file into the boards/ directory to override compiled defaults.
+# Any field you omit will use the built-in default value.
+
+[board]
+name = "Sequent 16-Relay HAT"
+protocol = "pca9535"
+
+[address]
+base = 0x20
+mode = "xor7"           # (base + stack) ^ 0x07
+
+[channels]
+relays = 16
+# Channel-to-bit remapping: relay 1 = bit 15 ... relay 16 = bit 0
+relay_remap = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+
+[pca9535]
+outport_reg = 0x02      # Output Port register (read/write, 2B LE)
+inport_reg = 0x00       # Input Port register (read, 2B LE)
+config_reg = 0x06       # Configuration register (0=output, 1=input, 2B LE)
