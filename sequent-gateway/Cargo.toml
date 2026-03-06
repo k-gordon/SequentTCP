@@ -1,0 +1,20 @@
+[package]
+name = "sequent-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Modbus TCP ↔ I²C gateway for Sequent Microsystems HATs"
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "signal", "time", "io-util"] }
+i2cdev = "0.6"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
