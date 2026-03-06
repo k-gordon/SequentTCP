@@ -44,29 +44,68 @@ Sequent's [`megaind-rpi`](https://github.com/SequentMicrosystems/megaind-rpi) re
 | [`src/comm.c`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/comm.c) | Raw I²C transport — `open("/dev/i2c-1")`, `ioctl(I2C_SLAVE, addr)`, then `read()`/`write()` with a 1-byte register prefix. |
 | [`src/megaind.h`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/megaind.h) | Full register map enum (0x00–0xFF): relay set/clr, opto inputs, analog I/O, OD PWM, RTC, watchdog, 1-Wire, calibration. |
 | [`src/analog.c`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/analog.c) | `val16Get()` / `val16Set()` — how 16-bit analog values are read/written (little-endian, millivolt scaling). |
-| [`python/megaind/__init__.py`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/python/megaind/__init__.py) | Sequent's own Python library using `smbus2` for direct I²C — proves the approach works without C at all. |
+| [`python/megaind/__init__.py`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/python/megaind/__init__.py) | Sequent's Python library using `smbus2` for direct I²C — already validated as working in our stack. |
 
-#### Language Options
+#### Decision: Straight to Rust
 
-| Option | Pros | Cons |
-|---|---|---|
-| **Rust** (preferred) | Memory-safe, zero-cost abstractions, single static binary, excellent `i2cdev` crate, cross-compile to `armv7`/`aarch64` trivially. Sequent's C register map ports 1:1 into a Rust enum. | Steeper learning curve; Modbus TCP server crate (`rodbus` or `tokio-modbus`) less mature than pyModbusTCP. |
-| **C** | Directly reuse Sequent's existing `comm.c` + `megaind.h`; proven on the target hardware. | Manual memory management, no built-in Modbus TCP server (would need `libmodbus`), harder to maintain long-term. |
-| **Python + smbus2** (stepping stone) | Minimal change — swap `subprocess.run(["megaind", ...])` calls for `smbus2.SMBus` register reads. Sequent already ships a Python library that does this. | Still Python — GIL limits true concurrency, `smbus2` adds a pip dependency, no single-binary deployment. |
+The Python + `smbus2` approach has already been validated against the hardware — the register map and I²C access patterns are confirmed working. There is no need for a Python stepping stone. The project will move directly to a full Rust implementation.
 
-#### Recommended Path
+**Why Rust:**
+- Single static binary — no Python runtime, no pip, no venv on the target Pi
+- Memory-safe with zero-cost abstractions; no GC pauses in a 10 Hz control loop
+- Excellent `i2cdev` crate maps directly to `/dev/i2c-*` with safe Rust types
+- Cross-compile to `armv7`/`aarch64` trivially via `cross` or `cargo-zigbuild`
+- Sequent's C register map (`megaind.h` enum) ports 1:1 into a Rust `#[repr(u8)]` enum
+- `tokio-modbus` or `rodbus` for async Modbus TCP server
+- Native `systemd` notify support — no wrapper scripts
+- `clap` for CLI parsing (mirrors the current `argparse` interface)
 
-1. **Immediate:** Refactor the Python gateway to use `smbus2` directly (drop subprocess dependency). This validates the register map and I²C access patterns with minimal risk.
-2. **Next:** Port the entire gateway to Rust — single binary, `systemd` friendly, sub-millisecond I²C reads, integrated Modbus TCP server.
+#### Rust Crate Stack
+
+| Crate | Role |
+|---|---|
+| [`i2cdev`](https://crates.io/crates/i2cdev) | I²C bus access via Linux `/dev/i2c-*` |
+| [`tokio-modbus`](https://crates.io/crates/tokio-modbus) | Async Modbus TCP server |
+| [`tokio`](https://crates.io/crates/tokio) | Async runtime (timer, TCP, signal handling) |
+| [`clap`](https://crates.io/crates/clap) | CLI argument parsing |
+| [`tracing`](https://crates.io/crates/tracing) + [`tracing-subscriber`](https://crates.io/crates/tracing-subscriber) | Structured logging (replaces Python `logging`) |
+
+#### Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│                  Rust Binary                     │
+│                                                  │
+│  ┌────────────┐   ┌───────────────────────────┐  │
+│  │  Modbus    │   │  I²C HAL Layer            │  │
+│  │  TCP       │◄─►│                           │  │
+│  │  Server    │   │  ┌─────────┐ ┌──────────┐ │  │
+│  │ (tokio-    │   │  │ MegaInd │ │ 16RelInd │ │  │
+│  │  modbus)   │   │  │ Regs    │ │ Regs     │ │  │
+│  └────────────┘   │  └────┬────┘ └────┬─────┘ │  │
+│                   │       │           │        │  │
+│                   │    /dev/i2c-1     │        │  │
+│                   └───────────────────────────┘  │
+└──────────────────────────────────────────────────┘
+         ▲                  │
+   Modbus TCP          I²C Bus
+   (SCADA/vPLC)        (Sequent HATs)
+```
 
 #### Milestone Checklist
 
-- [ ] Extract I²C register map from `megaind.h` into a shared constants module
-- [ ] Replace `subprocess.run(["megaind", ...])` in `IndustrialBoard` with `smbus2` register reads
-- [ ] Replace `subprocess.run(["16relind", ...])` in `RelayBoard` with `smbus2` register writes
-- [ ] Validate all I/O channels against the current CLI-based output
-- [ ] Benchmark: measure loop cycle time improvement (target: < 5 ms per full cycle)
-- [ ] Begin Rust port: I²C HAL layer → register map → Modbus TCP server → systemd unit
+- [ ] Scaffold Rust project (`cargo init sequent-gateway`)
+- [ ] Port I²C register map from `megaind.h` → `src/registers.rs` (`#[repr(u8)]` enum)
+- [ ] Implement I²C HAL: `MegaIndBoard` struct wrapping `i2cdev` for the Industrial HAT
+- [ ] Implement I²C HAL: `RelayBoard` struct wrapping `i2cdev` for the 16-Relay HAT
+- [ ] Implement state-caching layer (only write on change, matching current Python behaviour)
+- [ ] Integrate `tokio-modbus` TCP server with the Modbus memory map
+- [ ] Wire up the 10 Hz poll loop (read inputs → update data bank → apply coil writes)
+- [ ] Add heartbeat logging via `tracing` (match current console output format)
+- [ ] Add `clap` CLI (`--host`, `--port`, `--map-opto-to-reg`, `--ind-stack`, `--relay-stack`)
+- [ ] Cross-compile and validate on Raspberry Pi against known-good Python output
+- [ ] Create `systemd` unit file for single-binary deployment
+- [ ] Benchmark: target < 1 ms full I/O cycle (vs ~100+ ms with subprocess)
 
 ---
 
