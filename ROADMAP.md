@@ -29,21 +29,62 @@ The gateway turns a Raspberry Pi into a high-performance Industrial Modbus Gatew
 
 ## 🔜 Planned
 
-### P0 — Production Readiness
+### 🏁 Phase 0 — Native I²C Rewrite (Immediate Next Step)
+
+> **Goal:** Eliminate the `subprocess` → CLI-tool bottleneck. The current Python gateway shells out to `megaind` and `16relind` on every read/write cycle — parsing their stdout for values. This works as a proof-of-concept but adds ~50–100 ms of latency per I/O call, limits error handling, and creates a fragile dependency on CLI output formatting.
+>
+> The rewrite will talk directly to the I²C bus using the same register map that Sequent's own tools use internally.
+
+#### Reference Material
+
+Sequent's [`megaind-rpi`](https://github.com/SequentMicrosystems/megaind-rpi) repository contains all the information needed:
+
+| Source | What it tells us |
+|---|---|
+| [`src/comm.c`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/comm.c) | Raw I²C transport — `open("/dev/i2c-1")`, `ioctl(I2C_SLAVE, addr)`, then `read()`/`write()` with a 1-byte register prefix. |
+| [`src/megaind.h`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/megaind.h) | Full register map enum (0x00–0xFF): relay set/clr, opto inputs, analog I/O, OD PWM, RTC, watchdog, 1-Wire, calibration. |
+| [`src/analog.c`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/analog.c) | `val16Get()` / `val16Set()` — how 16-bit analog values are read/written (little-endian, millivolt scaling). |
+| [`python/megaind/__init__.py`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/python/megaind/__init__.py) | Sequent's own Python library using `smbus2` for direct I²C — proves the approach works without C at all. |
+
+#### Language Options
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Rust** (preferred) | Memory-safe, zero-cost abstractions, single static binary, excellent `i2cdev` crate, cross-compile to `armv7`/`aarch64` trivially. Sequent's C register map ports 1:1 into a Rust enum. | Steeper learning curve; Modbus TCP server crate (`rodbus` or `tokio-modbus`) less mature than pyModbusTCP. |
+| **C** | Directly reuse Sequent's existing `comm.c` + `megaind.h`; proven on the target hardware. | Manual memory management, no built-in Modbus TCP server (would need `libmodbus`), harder to maintain long-term. |
+| **Python + smbus2** (stepping stone) | Minimal change — swap `subprocess.run(["megaind", ...])` calls for `smbus2.SMBus` register reads. Sequent already ships a Python library that does this. | Still Python — GIL limits true concurrency, `smbus2` adds a pip dependency, no single-binary deployment. |
+
+#### Recommended Path
+
+1. **Immediate:** Refactor the Python gateway to use `smbus2` directly (drop subprocess dependency). This validates the register map and I²C access patterns with minimal risk.
+2. **Next:** Port the entire gateway to Rust — single binary, `systemd` friendly, sub-millisecond I²C reads, integrated Modbus TCP server.
+
+#### Milestone Checklist
+
+- [ ] Extract I²C register map from `megaind.h` into a shared constants module
+- [ ] Replace `subprocess.run(["megaind", ...])` in `IndustrialBoard` with `smbus2` register reads
+- [ ] Replace `subprocess.run(["16relind", ...])` in `RelayBoard` with `smbus2` register writes
+- [ ] Validate all I/O channels against the current CLI-based output
+- [ ] Benchmark: measure loop cycle time improvement (target: < 5 ms per full cycle)
+- [ ] Begin Rust port: I²C HAL layer → register map → Modbus TCP server → systemd unit
+
+---
+
+### P1 — Production Readiness
 
 | Item | Description |
 |---|---|
 | **Systemd Service** | Create a `.service` unit file so the gateway starts on boot and auto-restarts on failure. |
 | **I²C Bus Hardware Reset** | "Nuclear Reset" — toggle GPIO pins to clear a hung I²C bus without a full reboot. |
 
-### P1 — Protocol & Addressing
+### P2 — Protocol & Addressing
 
 | Item | Description |
 |---|---|
 | **Multi-Slave Addressing** | Split boards into separate Modbus Slave IDs (e.g. Relay board = Slave 1, Industrial board = Slave 2) for cleaner PLC mapping. |
 | **Configurable Stack IDs** | CLI flags to set the stack ID for each board instead of hardcoded `0` / `1`. |
 
-### P2 — Observability & Reliability
+### P3 — Observability & Reliability
 
 | Item | Description |
 |---|---|
@@ -51,7 +92,7 @@ The gateway turns a Raspberry Pi into a high-performance Industrial Modbus Gatew
 | **Health Endpoint** | Lightweight HTTP/JSON status endpoint for monitoring dashboards. |
 | **Watchdog Timer** | Detect and recover from stalled I²C reads that exceed a timeout budget. |
 
-### P3 — Extended I/O
+### P4 — Extended I/O
 
 | Item | Description |
 |---|---|
