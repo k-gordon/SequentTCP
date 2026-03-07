@@ -13,19 +13,19 @@ Usage:
     # Start the gateway first:
     sudo ./target/release/sequent-gateway --health-port 8080 --builtin-defaults
 
-    # Then in another terminal:
-    python3 tests/hw-validation.py
+    # Then in another terminal (pyModbusTCP lives in ~/venv):
+    ~/venv/bin/python3 tests/hw-validation.py
 
     # Or with custom ports:
-    python3 tests/hw-validation.py --modbus-port 502 --health-port 8080
+    ~/venv/bin/python3 tests/hw-validation.py --modbus-port 502 --health-port 8080
 
     # Skip relay toggle tests (if relays control live equipment):
-    python3 tests/hw-validation.py --skip-writes
+    ~/venv/bin/python3 tests/hw-validation.py --skip-writes
 
     # Only run a specific category:
-    python3 tests/hw-validation.py --only health
-    python3 tests/hw-validation.py --only analog
-    python3 tests/hw-validation.py --only relay
+    ~/venv/bin/python3 tests/hw-validation.py --only health
+    ~/venv/bin/python3 tests/hw-validation.py --only analog
+    ~/venv/bin/python3 tests/hw-validation.py --only relay
 
 Copy the full output and paste it back — it contains everything needed
 to check off Story 10 and Epic 2 acceptance criteria.

@@ -108,22 +108,19 @@ A self-contained test suite exercises the live gateway against real hardware
 and produces a structured PASS/FAIL report.
 
 ```bash
-# Prerequisite (one-time)
-pip3 install pyModbusTCP
-
 # Start the gateway in one terminal:
 sudo ./target/release/sequent-gateway --health-port 8080 --builtin-defaults
 
-# Run the validation suite in another:
-python3 tests/hw-validation.py
+# Run the validation suite in another (pyModbusTCP is in ~/venv):
+~/venv/bin/python3 tests/hw-validation.py
 
 # Safe mode — skip relay/OD/analog writes (won't toggle outputs):
-python3 tests/hw-validation.py --skip-writes
+~/venv/bin/python3 tests/hw-validation.py --skip-writes
 
 # Run just one category:
-python3 tests/hw-validation.py --only health
-python3 tests/hw-validation.py --only relay
-python3 tests/hw-validation.py --only stability
+~/venv/bin/python3 tests/hw-validation.py --only health
+~/venv/bin/python3 tests/hw-validation.py --only relay
+~/venv/bin/python3 tests/hw-validation.py --only stability
 ```
 
 The report maps directly to Story 10 and Epic 2 acceptance criteria.
