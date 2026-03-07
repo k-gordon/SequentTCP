@@ -7,7 +7,7 @@
 
 ---
 
-## 1. `SequentBoard` Trait & `BoardCapability` Enum
+## 1. `SequentBoard` Trait & `BoardCapability` Enum ✅ Wired (SEQGW-25)
 
 **Files:** `src/hal/traits.rs`
 
@@ -20,11 +20,15 @@ pub trait SequentBoard: Send {
     fn capabilities(&self) -> &'static [BoardCapability];
     fn relay_count(&self) -> usize { 0 }
     fn has_capability(&self, cap: BoardCapability) -> bool;
+    fn poll_inputs(&mut self, db: &mut DataBank) -> Result<()> { Ok(()) }
+    fn apply_outputs(&mut self, db: &DataBank, cache: &mut OutputCache) -> Result<()> { Ok(()) }
 }
 ```
 
 Both `MegaIndBoard` and `RelayBoard` implement this trait (including
-Windows stubs).
+Windows stubs). `MegaIndBoard` overrides `poll_inputs` (reads all
+analog + opto + voltage inputs) and `apply_outputs` (OD + analog
+outputs). `RelayBoard` overrides `apply_outputs` (relay coils).
 
 ### How to use it
 
@@ -37,11 +41,9 @@ let boards: Vec<Box<dyn SequentBoard>> = vec![
     Box::new(relay_board),
 ];
 
-for board in &boards {
-    info!("{} (stack {}) caps: {:?}", board.name(), board.stack_id(), board.capabilities());
-    if board.has_capability(BoardCapability::Relays) {
-        // dispatch relay I/O
-    }
+for board in &mut boards {
+    board.poll_inputs(&mut db)?;
+    board.apply_outputs(&db, &mut cache)?;
 }
 ```
 
@@ -49,9 +51,8 @@ This would let the gateway load an arbitrary number of boards from
 TOML config and iterate them generically, instead of hard-coding
 `use_megaind` / `use_relay16` / `use_relay8` branches in `main.rs`.
 
-**Prerequisite:** The trait would need concrete I/O methods added
-(e.g. `fn read_inputs(&mut self, db: &mut DataBank)`) or a
-secondary trait for each capability group.
+**Next step:** SEQGW-26 (Board Registry) will build the `Vec<Box<dyn
+SequentBoard>>` and replace the current concrete-typed poll loop.
 
 ---
 
@@ -198,7 +199,4 @@ If you decide to activate any of these, here's the rough order:
 3. ~~**`recovery_count()`**~~ ✅ Done — added to health JSON and heartbeat log. (SEQGW-21)
 4. ~~**`read_relay_state()`**~~ ✅ Done — periodic read-back verification
    every N-th tick, mismatches invalidate cache. HR 24 diagnostic register. (SEQGW-23/24)
-5. **`SequentBoard` trait dispatch** — larger refactor; replace the
-   `if use_megaind` / `if use_relay16` branching with a board
-   registry iterated generically. Best saved for when a third
-   distinct board type is added. (SEQGW-25/26)
+5. **`S

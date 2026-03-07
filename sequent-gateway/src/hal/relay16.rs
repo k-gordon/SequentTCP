@@ -12,6 +12,8 @@ use i2cdev::linux::LinuxI2CDevice;
 use tracing::{debug, info};
 
 use crate::board_def::BoardDef;
+use crate::cache::OutputCache;
+use crate::databank::DataBank;
 
 /// HAL wrapper for a PCA9535-based relay board.
 pub struct RelayBoard {
@@ -165,5 +167,34 @@ impl super::traits::SequentBoard for RelayBoard {
     }
     fn relay_count(&self) -> usize {
         self.ch_remap.len()
+    }
+
+    /// Apply relay coil writes from the DataBank to hardware.
+    ///
+    /// Iterates coils 0..relay_count, using the OutputCache to suppress
+    /// redundant I²C writes. Each relay is written individually via
+    /// `set_relay()`.
+    fn apply_outputs(&mut self, db: &DataBank, cache: &mut OutputCache) -> Result<()> {
+        let count = self.relay_count();
+        for i in 0..count {
+            if cache.should_update_relay(i, db.coils[i]) {
+                let ch = (i + 1) as u8;
+                match self.set_relay(ch, db.coils[i]) {
+                    Ok(()) => {
+                        cache.confirm_relay(i, db.coils[i]);
+                        info!(
+                            "Relay {} → {}",
+                            ch,
+                            if db.coils[i] { "ON" } else { "OFF" }
+                        );
+                    }
+                    Err(e) => {
+                        cache.invalidate_relay(i);
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }

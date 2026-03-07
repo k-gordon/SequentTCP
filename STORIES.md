@@ -497,13 +497,13 @@
 **so that** the poll loop can operate on boards generically without type-specific branching.
 
 **Acceptance Criteria:**
-- [ ] `SequentBoard` trait gains: `fn poll_inputs(&mut self, db: &mut DataBank) -> Result<()>`
-- [ ] `SequentBoard` trait gains: `fn apply_outputs(&mut self, db: &DataBank, cache: &mut OutputCache) -> Result<()>`
-- [ ] Default implementations return `Ok(())` (no-op for boards that don't support a capability)
-- [ ] `MegaIndBoard` implements `poll_inputs` (reads analog + opto + voltage, writes to data bank)
-- [ ] `RelayBoard` implements `apply_outputs` (reads coils from data bank, writes relays via cache)
-- [ ] Both impls delegate to existing concrete methods (no logic duplication)
-- [ ] Existing unit tests still pass; 2 new trait-dispatch integration tests
+- [x] `SequentBoard` trait gains: `fn poll_inputs(&mut self, db: &mut DataBank) -> Result<()>`
+- [x] `SequentBoard` trait gains: `fn apply_outputs(&mut self, db: &DataBank, cache: &mut OutputCache) -> Result<()>`
+- [x] Default implementations return `Ok(())` (no-op for boards that don't support a capability)
+- [x] `MegaIndBoard` implements `poll_inputs` (reads analog + opto + voltage, writes to data bank)
+- [x] `RelayBoard` implements `apply_outputs` (reads coils from data bank, writes relays via cache)
+- [x] Both impls delegate to existing concrete methods (no logic duplication)
+- [x] Existing unit tests still pass; 4 new trait-dispatch tests (71 total)
 
 ---
 

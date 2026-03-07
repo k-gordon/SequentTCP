@@ -1,8 +1,8 @@
 //! Common HAL trait for Sequent Microsystems I²C boards.
 //!
-//! [`SequentBoard`] provides identity and capability introspection so that
-//! the gateway can discover and report on boards at runtime without needing
-//! to know the concrete HAL type.
+//! [`SequentBoard`] provides identity, capability introspection, and I/O
+//! dispatch so that the gateway can discover and poll boards at runtime
+//! without needing to know the concrete HAL type.
 //!
 //! # Adding a new board
 //!
@@ -11,6 +11,11 @@
 //! 3. Implement `SequentBoard` for the struct.
 //! 4. Add a compiled default in [`crate::board_def::BoardDef`].
 //! 5. Register the board type in the CLI (`--board <type>`) and poll loop.
+
+use anyhow::Result;
+
+use crate::cache::OutputCache;
+use crate::databank::DataBank;
 
 /// Capabilities that a board may expose to the gateway.
 ///
@@ -34,12 +39,20 @@ pub enum BoardCapability {
 /// Common interface for all Sequent Microsystems I²C HATs.
 ///
 /// Implementing this trait allows a board to participate in the gateway's
-/// dynamic board discovery, capability introspection, and future
-/// trait-object-based poll loop dispatch.
+/// dynamic board discovery, capability introspection, and trait-object-based
+/// poll loop dispatch.
 ///
-/// Concrete I/O methods (e.g. `read_4_20ma_inputs`, `set_relay`) remain
-/// on the implementing struct — the trait provides identity and capability
-/// metadata.
+/// # I/O dispatch
+///
+/// [`poll_inputs`](SequentBoard::poll_inputs) reads hardware inputs and
+/// writes them into the shared [`DataBank`].
+///
+/// [`apply_outputs`](SequentBoard::apply_outputs) reads desired output
+/// state from the [`DataBank`] and writes to hardware through the
+/// [`OutputCache`] (write-on-change).
+///
+/// Default implementations are no-ops, so boards only need to override
+/// the methods matching their capabilities.
 #[allow(dead_code)]
 pub trait SequentBoard: Send {
     /// Human-readable board name (for logging and diagnostics).
@@ -60,6 +73,23 @@ pub trait SequentBoard: Send {
     fn has_capability(&self, cap: BoardCapability) -> bool {
         self.capabilities().contains(&cap)
     }
+
+    /// Read all hardware inputs and update the shared [`DataBank`].
+    ///
+    /// Called once per poll tick for each registered board.
+    /// The default implementation is a no-op (for boards with no inputs).
+    fn poll_inputs(&mut self, _db: &mut DataBank) -> Result<()> {
+        Ok(())
+    }
+
+    /// Read desired output state from the [`DataBank`] and write to
+    /// hardware through the [`OutputCache`].
+    ///
+    /// Called once per poll tick for each registered board.
+    /// The default implementation is a no-op (for boards with no outputs).
+    fn apply_outputs(&mut self, _db: &DataBank, _cache: &mut OutputCache) -> Result<()> {
+        Ok(())
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -69,6 +99,8 @@ pub trait SequentBoard: Send {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::OutputCache;
+    use crate::databank::DataBank;
 
     /// Minimal test board for verifying the trait's default methods.
     struct DummyBoard;
@@ -120,5 +152,94 @@ mod tests {
         }
         assert_eq!(NoRelays.relay_count(), 0);
         assert!(!NoRelays.has_capability(BoardCapability::Relays));
+    }
+
+    // ── Trait-dispatch integration tests (SEQGW-25) ─────────────────
+
+    /// A mock "input board" that writes specific values into the DataBank
+    /// when poll_inputs is called through a trait object.
+    struct MockInputBoard {
+        ma_value: f32,
+        voltage: f32,
+    }
+
+    impl SequentBoard for MockInputBoard {
+        fn name(&self) -> &str { "MockInput" }
+        fn stack_id(&self) -> u8 { 3 }
+        fn capabilities(&self) -> &'static [BoardCapability] {
+            &[BoardCapability::AnalogInputs, BoardCapability::DiscreteInputs]
+        }
+        fn poll_inputs(&mut self, db: &mut DataBank) -> Result<()> {
+            // Write mA value to HR 0 (mA × 100)
+            db.holding_registers[0] = (self.ma_value * 100.0) as u16;
+            // Write voltage to HR 8 (V × 100)
+            db.holding_registers[8] = (self.voltage * 100.0) as u16;
+            Ok(())
+        }
+    }
+
+    /// A mock "output board" that writes coil[0] state back into HR 9
+    /// (an otherwise-unused register) so we can verify dispatch.
+    struct MockOutputBoard;
+
+    impl SequentBoard for MockOutputBoard {
+        fn name(&self) -> &str { "MockOutput" }
+        fn stack_id(&self) -> u8 { 5 }
+        fn capabilities(&self) -> &'static [BoardCapability] {
+            &[BoardCapability::Relays]
+        }
+        fn relay_count(&self) -> usize { 4 }
+        fn apply_outputs(&mut self, db: &DataBank, _cache: &mut OutputCache) -> Result<()> {
+            // Can't mutate db, so we verify by checking that we can read the coil.
+            // The real verification is that this method gets called at all through
+            // the trait object — if it doesn't, the assert below will fail.
+            assert!(db.coils[0], "expected coil 0 to be ON");
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn trait_object_poll_inputs_dispatches_to_impl() {
+        let mut board: Box<dyn SequentBoard> = Box::new(MockInputBoard {
+            ma_value: 12.5,
+            voltage: 24.1,
+        });
+        let mut db = DataBank::new();
+
+        // Dispatch through trait object
+        board.poll_inputs(&mut db).unwrap();
+
+        assert_eq!(db.holding_registers[0], 1250); // 12.5 × 100
+        assert_eq!(db.holding_registers[8], 2410); // 24.1 × 100
+    }
+
+    #[test]
+    fn trait_object_apply_outputs_dispatches_to_impl() {
+        let mut board: Box<dyn SequentBoard> = Box::new(MockOutputBoard);
+        let mut db = DataBank::new();
+        let mut cache = OutputCache::new();
+
+        db.coils[0] = true;
+        // This calls MockOutputBoard::apply_outputs which asserts coil[0] == true.
+        // If dispatch doesn't work, this will panic.
+        board.apply_outputs(&db, &mut cache).unwrap();
+    }
+
+    #[test]
+    fn default_poll_inputs_is_noop() {
+        let mut board = DummyBoard;
+        let mut db = DataBank::new();
+        // Default implementation should succeed without modifying the DB
+        assert!(board.poll_inputs(&mut db).is_ok());
+        assert_eq!(db.holding_registers[0], 0);
+    }
+
+    #[test]
+    fn default_apply_outputs_is_noop() {
+        let mut board = DummyBoard;
+        let db = DataBank::new();
+        let mut cache = OutputCache::new();
+        // Default implementation should succeed
+        assert!(board.apply_outputs(&db, &mut cache).is_ok());
     }
 }

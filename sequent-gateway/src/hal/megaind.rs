@@ -13,6 +13,8 @@ use i2cdev::linux::LinuxI2CDevice;
 use tracing::{debug, warn};
 
 use crate::board_def::BoardDef;
+use crate::cache::OutputCache;
+use crate::databank::{DataBank, HR_I4_20_OUT_BASE, HR_U0_10_OUT_BASE};
 use crate::registers::{
     I4_20_IN_CHANNELS, I4_20_OUT_CHANNELS, OD_CHANNELS, OPTO_CHANNELS,
     U0_10_IN_CHANNELS, U0_10_OUT_CHANNELS,
@@ -246,5 +248,87 @@ impl super::traits::SequentBoard for MegaIndBoard {
     fn capabilities(&self) -> &'static [super::traits::BoardCapability] {
         use super::traits::BoardCapability::*;
         &[DiscreteInputs, DiscreteOutputs, AnalogInputs, AnalogOutputs]
+    }
+
+    /// Read all Industrial HAT inputs and update the DataBank.
+    ///
+    /// Delegates to `read_4_20ma_inputs`, `read_0_10v_inputs`,
+    /// `read_system_voltage`, and `read_opto_inputs`.
+    fn poll_inputs(&mut self, db: &mut DataBank) -> Result<()> {
+        // 4-20 mA → HR 0-7 (mA × 100)
+        let ma = self.read_4_20ma_inputs()?;
+        for (i, &val) in ma.iter().enumerate() {
+            db.holding_registers[i] = (val * 100.0) as u16;
+        }
+
+        // PSU voltage → HR 8 (V × 100)
+        let voltage = self.read_system_voltage()?;
+        db.holding_registers[8] = (voltage * 100.0) as u16;
+
+        // 0-10 V → HR 10-13 (V × 100)
+        let v = self.read_0_10v_inputs()?;
+        for (i, &val) in v.iter().enumerate() {
+            db.holding_registers[10 + i] = (val * 100.0) as u16;
+        }
+
+        // Opto → DI 0-7
+        let (_bitmask, opto_bits) = self.read_opto_inputs()?;
+        db.discrete_inputs[..OPTO_CHANNELS].copy_from_slice(&opto_bits);
+
+        Ok(())
+    }
+
+    /// Apply OD and analog outputs from the DataBank to hardware.
+    ///
+    /// Delegates to `set_od_output`, `write_0_10v_output`, and
+    /// `write_4_20ma_output` through the OutputCache.
+    fn apply_outputs(&mut self, db: &DataBank, cache: &mut OutputCache) -> Result<()> {
+        // OD outputs (coils 16-19)
+        for i in 0..OD_CHANNELS {
+            if cache.should_update_od(i, db.coils[16 + i]) {
+                let ch = (i + 1) as u8;
+                match self.set_od_output(ch, db.coils[16 + i]) {
+                    Ok(()) => cache.confirm_od(i, db.coils[16 + i]),
+                    Err(e) => {
+                        cache.invalidate_od(i);
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        // 0-10 V outputs (HR 16-19)
+        for i in 0..U0_10_OUT_CHANNELS {
+            let reg_val = db.holding_registers[HR_U0_10_OUT_BASE + i];
+            if cache.should_update_v_out(i, reg_val) {
+                let mv = reg_val.saturating_mul(10); // Modbus ×100 → mV
+                let ch = (i + 1) as u8;
+                match self.write_0_10v_output(ch, mv) {
+                    Ok(()) => cache.confirm_v_out(i, reg_val),
+                    Err(e) => {
+                        cache.invalidate_v_out(i);
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        // 4-20 mA outputs (HR 20-23)
+        for i in 0..I4_20_OUT_CHANNELS {
+            let reg_val = db.holding_registers[HR_I4_20_OUT_BASE + i];
+            if cache.should_update_ma_out(i, reg_val) {
+                let ua = reg_val.saturating_mul(10); // Modbus ×100 → µA
+                let ch = (i + 1) as u8;
+                match self.write_4_20ma_output(ch, ua) {
+                    Ok(()) => cache.confirm_ma_out(i, reg_val),
+                    Err(e) => {
+                        cache.invalidate_ma_out(i);
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
