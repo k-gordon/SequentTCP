@@ -14,9 +14,6 @@ Usage (run on the Pi, from the repo root):
     # Explicit board selection:
     sudo ~/venv/bin/python3 tests/hw_runner.py --board megaind --board relay16
 
-    # Legacy static scenario file:
-    sudo ~/venv/bin/python3 tests/hw_runner.py --scenario tests/scenarios/custom.toml
-
     # Skip relay/output writes (safe for live equipment):
     sudo ~/venv/bin/python3 tests/hw_runner.py --skip-writes
 
@@ -82,9 +79,7 @@ class ScenarioConfig:
     relay_stack: int = 0
     health_port: int = 8080
     modbus_port: int = 502
-    builtin_defaults: bool = False
     boards_dir: str = "boards"
-    extra_args: list[str] = field(default_factory=list)
 
     # Expected capabilities
     relay_count: int = 16
@@ -103,55 +98,6 @@ class ScenarioConfig:
     test_od_outputs: bool = True
     test_analog_outputs: bool = True
     test_stability: bool = True
-
-    @classmethod
-    def from_toml(cls, path: Path) -> "ScenarioConfig":
-        """Load a scenario from a TOML file."""
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-
-        sc = cls()
-
-        # [scenario]
-        scn = data.get("scenario", {})
-        sc.name = scn.get("name", path.stem)
-        sc.description = scn.get("description", "")
-
-        # [gateway]
-        gw = data.get("gateway", {})
-        sc.boards = gw.get("boards", sc.boards)
-        sc.single_slave = gw.get("single_slave", sc.single_slave)
-        sc.relay_slave_id = gw.get("relay_slave_id", sc.relay_slave_id)
-        sc.ind_slave_id = gw.get("ind_slave_id", sc.ind_slave_id)
-        sc.ind_stack = gw.get("ind_stack", sc.ind_stack)
-        sc.relay_stack = gw.get("relay_stack", sc.relay_stack)
-        sc.health_port = gw.get("health_port", sc.health_port)
-        sc.modbus_port = gw.get("modbus_port", sc.modbus_port)
-        sc.builtin_defaults = gw.get("builtin_defaults", sc.builtin_defaults)
-        sc.boards_dir = gw.get("boards_dir", sc.boards_dir)
-        sc.extra_args = gw.get("extra_args", sc.extra_args)
-
-        # [expect]
-        ex = data.get("expect", {})
-        sc.relay_count = ex.get("relay_count", sc.relay_count)
-        sc.opto_channels = ex.get("opto_channels", sc.opto_channels)
-        sc.ma_in_channels = ex.get("ma_in_channels", sc.ma_in_channels)
-        sc.v_in_channels = ex.get("v_in_channels", sc.v_in_channels)
-        sc.od_channels = ex.get("od_channels", sc.od_channels)
-        sc.v_out_channels = ex.get("v_out_channels", sc.v_out_channels)
-        sc.ma_out_channels = ex.get("ma_out_channels", sc.ma_out_channels)
-        sc.relay_readback = ex.get("relay_readback", sc.relay_readback)
-
-        # [tests]
-        ts = data.get("tests", {})
-        sc.test_health = ts.get("health", sc.test_health)
-        sc.test_analog_inputs = ts.get("analog_inputs", sc.test_analog_inputs)
-        sc.test_relay_writes = ts.get("relay_writes", sc.test_relay_writes)
-        sc.test_od_outputs = ts.get("od_outputs", sc.test_od_outputs)
-        sc.test_analog_outputs = ts.get("analog_outputs", sc.test_analog_outputs)
-        sc.test_stability = ts.get("stability", sc.test_stability)
-
-        return sc
 
     @classmethod
     def from_boards(
@@ -179,7 +125,6 @@ class ScenarioConfig:
         sc.health_port = health_port
         sc.modbus_port = modbus_port
         sc.boards_dir = boards_dir
-        sc.builtin_defaults = False
 
         # Sum capabilities across boards
         sc.relay_count = 0
@@ -227,9 +172,6 @@ class ScenarioConfig:
         if self.single_slave:
             cmd.append("--single-slave")
         cmd += ["--boards-dir", self.boards_dir]
-        if self.builtin_defaults:
-            cmd.append("--builtin-defaults")
-        cmd += self.extra_args
         return cmd
 
 
@@ -856,17 +798,6 @@ def _make_client(cfg: ScenarioConfig, board: str = "ind") -> ModbusClient:
 # Board discovery & interactive picker
 # ════════════════════════════════════════════════════════════════════════
 
-def discover_scenarios(scenario_dir: Path) -> list[Path]:
-    """(Legacy) Find all .toml files in the scenarios directory, sorted by name."""
-    if not scenario_dir.is_dir():
-        print(f"  ⚠️  Scenario directory not found: {scenario_dir}")
-        return []
-    tomls = sorted(scenario_dir.glob("*.toml"))
-    if not tomls:
-        print(f"  ⚠️  No .toml files found in {scenario_dir}")
-    return tomls
-
-
 def discover_boards(boards_dir: Path) -> list[tuple[str, str, dict[str, Any]]]:
     """Discover board TOML files.  Returns (slug, display_name, parsed_dict) tuples."""
     if not boards_dir.is_dir():
@@ -945,10 +876,7 @@ def main():
             "  sudo ~/venv/bin/python3 tests/hw_runner.py "
             "--board megaind --board relay16\n\n"
             "  # Skip writes (safe for live equipment):\n"
-            "  sudo ~/venv/bin/python3 tests/hw_runner.py --skip-writes\n\n"
-            "  # Legacy static scenario file:\n"
-            "  sudo ~/venv/bin/python3 tests/hw_runner.py "
-            "--scenario tests/scenarios/custom.toml\n"
+            "  sudo ~/venv/bin/python3 tests/hw_runner.py --skip-writes\n"
         ),
     )
     parser.add_argument(
@@ -974,17 +902,6 @@ def main():
         help="Use single-slave (flat) Modbus addressing",
     )
     parser.add_argument(
-        "--scenario",
-        action="append",
-        dest="scenarios",
-        help="(Legacy) Run a static scenario TOML file instead of dynamic mode",
-    )
-    parser.add_argument(
-        "--scenario-dir",
-        default="tests/scenarios",
-        help="(Legacy) Directory containing scenario TOML files",
-    )
-    parser.add_argument(
         "--skip-writes",
         action="store_true",
         help="Skip relay/OD/analog output write tests",
@@ -1004,53 +921,38 @@ def main():
     args = parser.parse_args()
 
     # ── Build scenario config(s) ──────────────────────────────────────
-    configs: list[ScenarioConfig] = []
+    boards_dir = Path(args.boards_dir)
+    available = discover_boards(boards_dir)
+    if not available:
+        print("ERROR: No board definitions found.")
+        sys.exit(1)
 
-    if args.scenarios:
-        # Legacy mode: load static TOML scenario files
-        for s in args.scenarios:
-            p = Path(s)
-            if not p.exists():
-                print(f"ERROR: Scenario file not found: {p}")
+    if args.boards:
+        # CLI-specified boards
+        slug_map = {slug: (slug, name, data) for slug, name, data in available}
+        names: list[str] = []
+        defs: list[dict[str, Any]] = []
+        for b in args.boards:
+            if b not in slug_map:
+                slugs = [s for s, _, _ in available]
+                print(f"ERROR: board {b!r} not found. Available: {', '.join(slugs)}")
                 sys.exit(1)
-            try:
-                configs.append(ScenarioConfig.from_toml(p))
-            except Exception as e:
-                print(f"  ⚠️  Failed to parse {p.name}: {e}")
+            _, _, data = slug_map[b]
+            names.append(b)
+            defs.append(data)
     else:
-        # Dynamic mode: discover boards → pick → build config
-        boards_dir = Path(args.boards_dir)
-        available = discover_boards(boards_dir)
-        if not available:
-            print("ERROR: No board definitions found.")
+        # Interactive picker
+        try:
+            names, defs = pick_boards_interactive(available)
+        except (ValueError, KeyboardInterrupt) as e:
+            print(f"\n  {e}")
             sys.exit(1)
 
-        if args.boards:
-            # CLI-specified boards
-            slug_map = {slug: (slug, name, data) for slug, name, data in available}
-            names: list[str] = []
-            defs: list[dict[str, Any]] = []
-            for b in args.boards:
-                if b not in slug_map:
-                    slugs = [s for s, _, _ in available]
-                    print(f"ERROR: board {b!r} not found. Available: {', '.join(slugs)}")
-                    sys.exit(1)
-                _, _, data = slug_map[b]
-                names.append(b)
-                defs.append(data)
-        else:
-            # Interactive picker
-            try:
-                names, defs = pick_boards_interactive(available)
-            except (ValueError, KeyboardInterrupt) as e:
-                print(f"\n  {e}")
-                sys.exit(1)
-
-        configs.append(ScenarioConfig.from_boards(
-            names, defs,
-            single_slave=args.single_slave,
-            boards_dir=args.boards_dir,
-        ))
+    configs = [ScenarioConfig.from_boards(
+        names, defs,
+        single_slave=args.single_slave,
+        boards_dir=args.boards_dir,
+    )]
 
     if not configs:
         print("ERROR: No valid scenarios loaded.")

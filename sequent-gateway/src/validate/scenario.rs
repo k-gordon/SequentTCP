@@ -12,133 +12,13 @@
 //! # Interactive picker (no --board flags):
 //! sequent-gateway validate
 //! ```
-//!
-//! Legacy static TOML scenario files are still supported via
-//! `--scenario <file>` for backward compatibility.
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
 
 use crate::board_def::BoardDef;
 use crate::cli::ValidateArgs;
-
-// ════════════════════════════════════════════════════════════════════════
-// Raw TOML shape (private — maps 1:1 to file structure)
-// ════════════════════════════════════════════════════════════════════════
-
-#[derive(Deserialize)]
-struct ScenarioFile {
-    scenario: ScenarioMeta,
-    #[serde(default)]
-    gateway: GatewaySection,
-    #[serde(default)]
-    expect: ExpectSection,
-    #[serde(default)]
-    tests: TestSection,
-}
-
-#[derive(Deserialize)]
-struct ScenarioMeta {
-    name: String,
-    #[serde(default)]
-    description: String,
-}
-
-#[derive(Deserialize, Default)]
-struct GatewaySection {
-    #[serde(default = "default_boards")]
-    boards: Vec<String>,
-    #[serde(default)]
-    single_slave: bool,
-    #[serde(default = "one_u16")]
-    relay_slave_id: u16,
-    #[serde(default = "two_u16")]
-    ind_slave_id: u16,
-    #[serde(default = "one_u16")]
-    ind_stack: u16,
-    #[serde(default)]
-    relay_stack: u16,
-    #[serde(default = "default_health_port")]
-    health_port: u16,
-    #[serde(default = "default_modbus_port")]
-    modbus_port: u16,
-    #[serde(default)]
-    builtin_defaults: bool,
-    #[serde(default = "default_boards_dir")]
-    boards_dir: String,
-    #[serde(default)]
-    extra_args: Vec<String>,
-}
-
-#[derive(Deserialize, Default)]
-struct ExpectSection {
-    #[serde(default = "sixteen")]
-    relay_count: u16,
-    #[serde(default = "eight")]
-    opto_channels: u16,
-    #[serde(default = "eight")]
-    ma_in_channels: u16,
-    #[serde(default = "four")]
-    v_in_channels: u16,
-    #[serde(default = "four")]
-    od_channels: u16,
-    #[serde(default = "four")]
-    v_out_channels: u16,
-    #[serde(default = "four")]
-    ma_out_channels: u16,
-    #[serde(default = "bool_true")]
-    relay_readback: bool,
-}
-
-#[derive(Deserialize, Default)]
-struct TestSection {
-    #[serde(default = "bool_true")]
-    health: bool,
-    #[serde(default = "bool_true")]
-    analog_inputs: bool,
-    #[serde(default = "bool_true")]
-    relay_writes: bool,
-    #[serde(default = "bool_true")]
-    od_outputs: bool,
-    #[serde(default = "bool_true")]
-    analog_outputs: bool,
-    #[serde(default = "bool_true")]
-    stability: bool,
-}
-
-// Serde default helpers
-fn default_boards() -> Vec<String> {
-    vec!["megaind".into(), "relay16".into()]
-}
-fn default_boards_dir() -> String {
-    "boards".into()
-}
-fn default_health_port() -> u16 {
-    8080
-}
-fn default_modbus_port() -> u16 {
-    502
-}
-fn one_u16() -> u16 {
-    1
-}
-fn two_u16() -> u16 {
-    2
-}
-fn four() -> u16 {
-    4
-}
-fn eight() -> u16 {
-    8
-}
-fn sixteen() -> u16 {
-    16
-}
-fn bool_true() -> bool {
-    true
-}
 
 // ════════════════════════════════════════════════════════════════════════
 // Public API
@@ -160,9 +40,7 @@ pub struct ScenarioConfig {
     pub relay_stack: u8,
     pub health_port: u16,
     pub modbus_port: u16,
-    pub builtin_defaults: bool,
     pub boards_dir: String,
-    pub extra_args: Vec<String>,
 
     // Expected capabilities
     pub relay_count: u16,
@@ -238,9 +116,7 @@ impl ScenarioConfig {
             relay_stack: args.relay_stack,
             health_port: args.health_port,
             modbus_port: args.modbus_port,
-            builtin_defaults: false,
             boards_dir: args.boards_dir.to_string_lossy().into(),
-            extra_args: vec![],
 
             relay_count,
             opto_channels,
@@ -258,52 +134,6 @@ impl ScenarioConfig {
             test_analog_outputs: true,
             test_stability: true,
         }
-    }
-
-    // ── Legacy TOML loader (backward compat) ─────────────────────────
-
-    /// Load a scenario from a static TOML file.
-    ///
-    /// Prefer `from_boards()` for new usage — this exists only for
-    /// backward compatibility with `--scenario <file>`.
-    pub fn from_file(path: &Path) -> Result<Self> {
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
-        let raw: ScenarioFile =
-            toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
-
-        Ok(Self {
-            name: raw.scenario.name,
-            description: raw.scenario.description,
-
-            boards: raw.gateway.boards,
-            single_slave: raw.gateway.single_slave,
-            relay_slave_id: raw.gateway.relay_slave_id as u8,
-            ind_slave_id: raw.gateway.ind_slave_id as u8,
-            ind_stack: raw.gateway.ind_stack as u8,
-            relay_stack: raw.gateway.relay_stack as u8,
-            health_port: raw.gateway.health_port,
-            modbus_port: raw.gateway.modbus_port,
-            builtin_defaults: raw.gateway.builtin_defaults,
-            boards_dir: raw.gateway.boards_dir,
-            extra_args: raw.gateway.extra_args,
-
-            relay_count: raw.expect.relay_count,
-            opto_channels: raw.expect.opto_channels,
-            ma_in_channels: raw.expect.ma_in_channels,
-            v_in_channels: raw.expect.v_in_channels,
-            od_channels: raw.expect.od_channels,
-            v_out_channels: raw.expect.v_out_channels,
-            ma_out_channels: raw.expect.ma_out_channels,
-            relay_readback: raw.expect.relay_readback,
-
-            test_health: raw.tests.health,
-            test_analog_inputs: raw.tests.analog_inputs,
-            test_relay_writes: raw.tests.relay_writes,
-            test_od_outputs: raw.tests.od_outputs,
-            test_analog_outputs: raw.tests.analog_outputs,
-            test_stability: raw.tests.stability,
-        })
     }
 
     /// Build the CLI argument list for spawning the gateway.
@@ -330,12 +160,6 @@ impl ScenarioConfig {
         }
         args.push("--boards-dir".into());
         args.push(self.boards_dir.clone());
-        if self.builtin_defaults {
-            args.push("--builtin-defaults".into());
-        }
-        for ea in &self.extra_args {
-            args.push(ea.clone());
-        }
         args
     }
 
@@ -507,28 +331,6 @@ pub fn resolve_boards(
     Ok((names, defs))
 }
 
-// ── Legacy scenario file discovery ───────────────────────────────────
-
-/// Discover all `.toml` scenario files in a directory, sorted by name.
-///
-/// Used only for backward-compatible `--scenario` mode.
-#[allow(dead_code)]
-pub fn discover_legacy(dir: &Path) -> Result<Vec<PathBuf>> {
-    if !dir.is_dir() {
-        anyhow::bail!("Scenario directory not found: {}", dir.display());
-    }
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().map_or(false, |ext| ext == "toml"))
-        .collect();
-    paths.sort();
-    if paths.is_empty() {
-        anyhow::bail!("No .toml files in {}", dir.display());
-    }
-    Ok(paths)
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // Tests
 // ════════════════════════════════════════════════════════════════════════
@@ -551,8 +353,6 @@ mod tests {
             relay_stack: 0,
             modbus_port: 502,
             health_port: 8080,
-            scenarios: vec![],
-            scenario_dir: PathBuf::from("tests/scenarios"),
             skip_writes: false,
             stability_duration: 5,
             startup_timeout: 10,

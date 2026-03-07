@@ -3,12 +3,11 @@
 //! Usage (from the repo root on the Pi):
 //!
 //! ```bash
-//! # Run all scenarios in tests/scenarios/:
-//! sudo ./target/release/sequent-gateway validate
+//! # Validate with explicit board selection:
+//! sudo ./target/release/sequent-gateway validate --board megaind --board relay16
 //!
-//! # Run one specific scenario:
-//! sudo ./target/release/sequent-gateway validate \
-//!      --scenario tests/scenarios/default_multi.toml
+//! # Interactive board picker:
+//! sudo ./target/release/sequent-gateway validate
 //!
 //! # Skip relay/OD/analog writes:
 //! sudo ./target/release/sequent-gateway validate --skip-writes
@@ -56,28 +55,15 @@ pub fn run(args: &ValidateArgs) -> Result<()> {
     };
 
     // ── Build scenario config(s) ─────────────────────────────────────
-    let configs: Vec<ScenarioConfig> = if !args.scenarios.is_empty() {
-        // Legacy mode: load static TOML scenario files
-        let mut cfgs = Vec::new();
-        for path in &args.scenarios {
-            match ScenarioConfig::from_file(path) {
-                Ok(cfg) => cfgs.push(cfg),
-                Err(e) => eprintln!("  WARNING: skipping {}: {e:#}", path.display()),
-            }
-        }
-        cfgs
+    let available = scenario::discover_boards(&args.boards_dir)?;
+    let (names, defs) = if !args.boards.is_empty() {
+        // CLI-specified boards
+        scenario::resolve_boards(&args.boards, &available)?
     } else {
-        // Dynamic mode: discover boards and build config
-        let available = scenario::discover_boards(&args.boards_dir)?;
-        let (names, defs) = if !args.boards.is_empty() {
-            // CLI-specified boards
-            scenario::resolve_boards(&args.boards, &available)?
-        } else {
-            // Interactive picker
-            scenario::pick_boards_interactive(&available)?
-        };
-        vec![ScenarioConfig::from_boards(&names, &defs, args)]
+        // Interactive picker
+        scenario::pick_boards_interactive(&available)?
     };
+    let configs = vec![ScenarioConfig::from_boards(&names, &defs, args)];
 
     if configs.is_empty() {
         anyhow::bail!("No valid scenarios loaded");

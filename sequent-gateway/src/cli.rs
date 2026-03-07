@@ -175,17 +175,6 @@ pub struct ValidateArgs {
     #[arg(long, default_value_t = 8080)]
     pub health_port: u16,
 
-    /// Run only specific scenario file(s) (legacy TOML mode).
-    ///
-    /// When provided, bypasses dynamic board discovery and uses the
-    /// static scenario TOML files instead.
-    #[arg(long = "scenario")]
-    pub scenarios: Vec<PathBuf>,
-
-    /// Directory containing scenario TOML files (legacy mode)
-    #[arg(long, default_value = "tests/scenarios")]
-    pub scenario_dir: PathBuf,
-
     /// Skip relay, open-drain, and analog output write tests.
     ///
     /// Use this when relays control live equipment.
