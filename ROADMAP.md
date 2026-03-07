@@ -8,9 +8,9 @@ The gateway turns a Raspberry Pi into a high-performance Industrial Modbus Gatew
 
 ---
 
-## ✅ Implemented
+## Implemented
 
-### User-Defined Goals
+### Goals
 
 - **vPLC Compatibility** — Standard Modbus TCP interface so that a vPLC (e.g. OpenPLC) can control the hardware without understanding I²C or Sequent-specific commands.
 - **Full I/O Mapping** — Every physical input and output is accessible: 4-20 mA sensors, 0-10 V sensors, opto-isolated digital inputs, open-drain outputs, and the 16-relay bank.
@@ -27,11 +27,11 @@ The gateway turns a Raspberry Pi into a high-performance Industrial Modbus Gatew
 
 ---
 
-## ✅ Completed — Rust Rewrite
+## Completed — Rust Rewrite
 
 > The Python gateway (`modbusTCP.py`) has been **deprecated**. All phases below are implemented in the Rust binary (`sequent-gateway/`). See [STORIES.md](STORIES.md) for the detailed acceptance criteria.
 
-### Phase 0 — Native I²C Rewrite ✅
+### Phase 0 — Native I²C Rewrite
 
 > The `subprocess` → CLI-tool bottleneck has been eliminated. The Rust gateway talks directly to the I²C bus using the register map from Sequent's `megaind.h` — achieving < 1 ms I/O cycles vs ~100 ms with subprocess.
 
@@ -83,8 +83,8 @@ The Python + `smbus2` approach has already been validated against the hardware �
 │  │ (tokio-    │   │  │ MegaInd │ │ 16RelInd │ │  │
 │  │  modbus)   │   │  │ Regs    │ │ Regs     │ │  │
 │  └────────────┘   │  └────┬────┘ └────┬─────┘ │  │
-│                   │       │           │        │  │
-│                   │    /dev/i2c-1     │        │  │
+│                   │       │           │       │  │
+│                   │    /dev/i2c-1     │       │  │
 │                   └───────────────────────────┘  │
 └──────────────────────────────────────────────────┘
          ▲                  │
@@ -109,38 +109,38 @@ The Python + `smbus2` approach has already been validated against the hardware �
 
 ---
 
-### P1 — Production Readiness ✅
+### P1 — Production Readiness
 
 | Item | Status | Description |
 |---|---|---|
-| **Systemd Service** | ✅ | `deploy/sequent-gateway.service` — auto-start on boot with restart-on-failure |
-| **I²C Bus Recovery** | ✅ | `i2c_recovery.rs` — GPIO-level SDA/SCL toggle to clear hung bus |
+| **Systemd Service** | Done | `deploy/sequent-gateway.service` — auto-start on boot with restart-on-failure |
+| **I²C Bus Recovery** | Done | `i2c_recovery.rs` — GPIO-level SDA/SCL toggle to clear hung bus |
 
-### P2 — Protocol & Addressing ✅
-
-| Item | Status | Description |
-|---|---|---|
-| **Multi-Slave Addressing** | ✅ | `slave_map.rs` — route boards to separate Modbus unit IDs |
-| **Configurable Stack IDs** | ✅ | `--ind-stack` / `--relay-stack` CLI flags |
-
-### P3 — Observability & Reliability ✅
+### P2 — Protocol & Addressing
 
 | Item | Status | Description |
 |---|---|---|
-| **Rotating File Logs** | ✅ | `tracing-appender` with `--log-dir` flag |
-| **Health Endpoint** | ✅ | `health.rs` — HTTP/JSON on `--health-port` (lock-free atomics) |
-| **Channel Watchdog** | ✅ | `channel_watchdog.rs` — per-channel timeout with last-known-good fallback |
+| **Multi-Slave Addressing** | Done | `slave_map.rs` — route boards to separate Modbus unit IDs |
+| **Configurable Stack IDs** | Done | `--ind-stack` / `--relay-stack` CLI flags |
 
-### P4 — Extended I/O ✅
+### P3 — Observability & Reliability
 
 | Item | Status | Description |
 |---|---|---|
-| **Analog Output Write-Back** | ✅ | FC 0x06/0x10 for 0-10V (HR 16-19) and 4-20mA (HR 20-23) outputs |
-| **Additional HAT Support** | ✅ | `SequentBoard` trait + `--board` flag + 8-Relay HAT support |
+| **Rotating File Logs** | Done | `tracing-appender` with `--log-dir` flag |
+| **Health Endpoint** | Done | `health.rs` — HTTP/JSON on `--health-port` (lock-free atomics) |
+| **Channel Watchdog** | Done | `channel_watchdog.rs` — per-channel timeout with last-known-good fallback |
+
+### P4 — Extended I/O
+
+| Item | Status | Description |
+|---|---|---|
+| **Analog Output Write-Back** | Done | FC 0x06/0x10 for 0-10V (HR 16-19) and 4-20mA (HR 20-23) outputs |
+| **Additional HAT Support** | Done | `SequentBoard` trait + `--board` flag + 8-Relay HAT support |
 
 ---
 
-## ❌ Abandoned
+##  Abandoned
 
 | Item | Reason |
 |---|---|
