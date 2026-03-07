@@ -366,7 +366,7 @@
 
 ---
 
-## Summary
+## Summary — Epic 1 (Complete)
 
 | Phase | Stories | Total Points |
 |---|---|---|
@@ -376,3 +376,177 @@
 | **Phase 3** — Observability & Reliability | SEQGW-15, SEQGW-16, SEQGW-17 | 8 |
 | **Phase 4** — Extended I/O | SEQGW-18, SEQGW-19 | 13 |
 | **Total** | **19 stories** | **70 points** |
+
+---
+---
+
+## Epic 2: Operational Instrumentation & Dynamic HAL
+
+**Epic ID:** SEQGW-EPIC-2
+
+**Summary:** Wire the existing-but-unused public API surface into the runtime — adding I²C error counting to the health endpoint, relay read-back verification, and culminating in a trait-object-based poll loop that supports arbitrary board combinations without code changes.
+
+**Business Value:** Epic 1 delivered a working gateway, but several reliability and extensibility features were built without being connected. This epic closes that gap: operators get real-time I²C health metrics in `/health`, relay state is verified against hardware, and integrators can deploy new board types by dropping in a TOML file — no recompilation required.
+
+**Acceptance Criteria (Epic-level):**
+- `/health` JSON reports live I²C error count and bus recovery count
+- Channel watchdog faults are iterated generically (no hard-coded channel lists)
+- Relay output state is periodically verified against hardware read-back
+- Poll loop dispatches I/O through `dyn SequentBoard` trait objects
+- A new board type can be added with only a TOML file and a HAL impl — no changes to `main.rs`
+
+**See also:** [`sequent-gateway/FUTURE_API.md`](sequent-gateway/FUTURE_API.md) for code snippets and wiring details.
+
+---
+
+## Phase 5 — Health & Diagnostics Wiring
+
+### Story 20: Wire I²C Error Counter into Health Endpoint
+
+**ID:** SEQGW-20 · **Points:** 1
+
+**As an** operator,
+**I want** the `/health` JSON to report a live count of I²C errors,
+**so that** I can monitor bus reliability from dashboards and set up alerts.
+
+**Acceptance Criteria:**
+- [ ] Every `Err` branch in the poll loop's I²C reads calls `health_stats.inc_i2c_errors()`
+- [ ] Every `Err` branch in the poll loop's I²C writes calls `health_stats.inc_i2c_errors()`
+- [ ] `GET /health` JSON field `i2c_errors` reflects the cumulative count
+- [ ] `status` field degrades to `"degraded"` when error count > 0 in the last cycle
+- [ ] Unit test: increment counter, verify JSON output includes updated value
+
+---
+
+### Story 21: Wire Recovery Count into Health Endpoint
+
+**ID:** SEQGW-21 · **Points:** 1
+
+**As an** operator,
+**I want** the `/health` JSON to include the number of I²C bus recoveries,
+**so that** I can see how often the bus is being reset without tailing logs.
+
+**Acceptance Criteria:**
+- [ ] `I2cWatchdog::recovery_count()` value is included in `/health` JSON as `"i2c_recoveries"`
+- [ ] Heartbeat log includes recovery count when > 0
+- [ ] Unit test: verify JSON field is present and correct after simulated recoveries
+
+---
+
+### Story 22: Generic Channel Iteration via `Channel::ALL`
+
+**ID:** SEQGW-22 · **Points:** 1
+
+**As a** developer,
+**I want** channel health checks to iterate `Channel::ALL` instead of hard-coding four channels,
+**so that** adding a new channel type in the future doesn't require editing every loop.
+
+**Acceptance Criteria:**
+- [ ] `HealthStats::update_channel_status()` uses `Channel::ALL` for its iteration
+- [ ] Heartbeat `log_heartbeat()` uses `Channel::ALL` where applicable
+- [ ] No remaining hard-coded `[Channel::Ma, Channel::Volt, Channel::Psu, Channel::Opto]` arrays outside of the `ALL` definition
+- [ ] Existing channel watchdog tests still pass (60+)
+
+---
+
+## Phase 6 — Hardware Verification
+
+### Story 23: Periodic Relay Read-Back Verification
+
+**ID:** SEQGW-23 · **Points:** 3
+
+**As an** operator,
+**I want** the gateway to periodically read back actual relay state from the HAT,
+**so that** a stuck relay or I²C glitch is detected and logged rather than silently ignored.
+
+**Acceptance Criteria:**
+- [ ] Every N-th poll tick (configurable, default every 10th = 1 Hz), call `relay_board.read_relay_state()`
+- [ ] Compare returned bitmask against `OutputCache` expected state
+- [ ] On mismatch: log at `WARN` with expected vs actual bitmask, increment a `relay_mismatch` counter
+- [ ] On mismatch: invalidate affected relay cache entries so next cycle re-writes them
+- [ ] `--relay-verify-interval <N>` CLI flag (default 10, 0 = disabled)
+- [ ] Mismatch counter exposed in `/health` JSON as `"relay_mismatches"`
+- [ ] Unit test: simulated mismatch triggers cache invalidation
+
+---
+
+### Story 24: Relay State Diagnostic Register
+
+**ID:** SEQGW-24 · **Points:** 2
+
+**As a** PLC programmer,
+**I want** to read the actual hardware relay bitmask via a Modbus holding register,
+**so that** my PLC can verify relay state independently of the coil writes.
+
+**Acceptance Criteria:**
+- [ ] New read-only Holding Register (HR 24 or configurable) contains the last `read_relay_state()` bitmask
+- [ ] Updated at the same frequency as the verify interval (Story 23)
+- [ ] Documented in README memory map
+- [ ] Unit test: verify HR value matches simulated read-back
+
+---
+
+## Phase 7 — Dynamic Board Dispatch
+
+### Story 25: I/O Methods on `SequentBoard` Trait
+
+**ID:** SEQGW-25 · **Points:** 5
+
+**As a** developer,
+**I want** the `SequentBoard` trait to include I/O dispatch methods,
+**so that** the poll loop can operate on boards generically without type-specific branching.
+
+**Acceptance Criteria:**
+- [ ] `SequentBoard` trait gains: `fn poll_inputs(&mut self, db: &mut DataBank) -> Result<()>`
+- [ ] `SequentBoard` trait gains: `fn apply_outputs(&mut self, db: &DataBank, cache: &mut OutputCache) -> Result<()>`
+- [ ] Default implementations return `Ok(())` (no-op for boards that don't support a capability)
+- [ ] `MegaIndBoard` implements `poll_inputs` (reads analog + opto + voltage, writes to data bank)
+- [ ] `RelayBoard` implements `apply_outputs` (reads coils from data bank, writes relays via cache)
+- [ ] Both impls delegate to existing concrete methods (no logic duplication)
+- [ ] Existing unit tests still pass; 2 new trait-dispatch integration tests
+
+---
+
+### Story 26: Board Registry & Dynamic Poll Loop
+
+**ID:** SEQGW-26 · **Points:** 8
+
+**As an** integrator,
+**I want** the gateway to load boards from a registry and poll them generically,
+**so that** I can add new hardware by dropping in a TOML file without recompiling.
+
+**Acceptance Criteria:**
+- [ ] `src/board_registry.rs` — `BoardRegistry` struct holding `Vec<Box<dyn SequentBoard>>`
+- [ ] Boards constructed from `--board` flags + TOML definitions and pushed into the registry
+- [ ] Poll loop iterates `registry.boards()` calling `poll_inputs()` and `apply_outputs()`
+- [ ] Remove `use_megaind` / `use_relay16` / `use_relay8` boolean flags from `main.rs`
+- [ ] Startup log lists all registered boards with name, stack ID, and capabilities
+- [ ] At least 2 boards registered and working end-to-end in tests
+- [ ] Backward compatible: same behaviour as today when using default `--board` flags
+
+---
+
+### Story 27: `stack_id()` Getters via Trait Objects
+
+**ID:** SEQGW-27 · **Points:** 1
+
+**As a** developer,
+**I want** all startup and heartbeat logging to use `board.stack_id()` from trait objects,
+**so that** stack IDs come from the actual board instance rather than duplicated CLI args.
+
+**Acceptance Criteria:**
+- [ ] Startup log uses `board.name()` and `board.stack_id()` from the registry
+- [ ] Heartbeat log references board identity from trait objects
+- [ ] `args.ind_stack` / `args.relay_stack` still used for board construction, but not for logging after init
+- [ ] Remove `#[allow(dead_code)]` from `stack_id()` on both HAL structs
+
+---
+
+## Summary — Epic 2
+
+| Phase | Stories | Total Points |
+|---|---|---|
+| **Phase 5** — Health & Diagnostics Wiring | SEQGW-20, SEQGW-21, SEQGW-22 | 3 |
+| **Phase 6** — Hardware Verification | SEQGW-23, SEQGW-24 | 5 |
+| **Phase 7** — Dynamic Board Dispatch | SEQGW-25, SEQGW-26, SEQGW-27 | 14 |
+| **Total** | **8 stories** | **22 points** |
