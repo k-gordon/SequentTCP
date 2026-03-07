@@ -17,12 +17,14 @@ pub struct Cli {
     #[arg(long = "board", value_name = "TYPE")]
     pub boards: Vec<String>,
 
-    /// Fall back to compiled-in register maps when no TOML file is
-    /// found for a board.
+    /// **[DEPRECATED]** Fall back to compiled-in register maps when no
+    /// TOML file is found for a board.
     ///
     /// Without this flag, the gateway requires a TOML definition in
     /// `--boards-dir` for every board listed in `--board`.
-    /// Use this for quick testing or migration from older versions.
+    /// Use this only for migration from older versions — the compiled-in
+    /// defaults will be removed in a future release.  Prefer placing
+    /// proper TOML files in `--boards-dir` instead.
     #[arg(long)]
     pub builtin_defaults: bool,
 

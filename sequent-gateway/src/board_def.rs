@@ -1,9 +1,11 @@
 //! Board definitions loaded from TOML files at runtime.
 //!
-//! Each board type (MegaInd, 16-Relay, etc.) is described by a `.toml` file
-//! in the `boards/` directory.  The compiled binary ships with built-in defaults
-//! that match the current hardware, but users can override any parameter by
-//! editing or adding TOML files — **no recompilation required**.
+//! Each board type (MegaInd, 16-Relay, 8-Relay, etc.) is described by a
+//! `.toml` file in the `boards/` directory.  **TOML files are the primary
+//! and only supported way to define board register maps.**  The compiled-in
+//! `default_*()` methods are **deprecated** — they exist only as a
+//! migration aid behind `--builtin-defaults` and will be removed in a
+//! future release.
 //!
 //! # Adding a new board
 //!
@@ -165,9 +167,18 @@ impl BoardDef {
         }
     }
 
-    // ── Built-in defaults ────────────────────────────────────────────
+    // ── Built-in defaults (DEPRECATED — use boards/*.toml) ──────────
 
     /// Compiled defaults for the Sequent MegaInd Industrial HAT.
+    ///
+    /// # Deprecated
+    /// Use `boards/megaind.toml` instead. These compiled-in defaults are
+    /// only reachable when `--builtin-defaults` is passed and the TOML
+    /// file is missing. They will be removed in a future release.
+    #[deprecated(
+        since = "0.9.0",
+        note = "use boards/megaind.toml instead of compiled-in defaults"
+    )]
     pub fn default_megaind() -> Self {
         Self {
             board: BoardInfo {
@@ -209,6 +220,15 @@ impl BoardDef {
     }
 
     /// Compiled defaults for the Sequent 16-Relay HAT.
+    ///
+    /// # Deprecated
+    /// Use `boards/relay16.toml` instead. These compiled-in defaults are
+    /// only reachable when `--builtin-defaults` is passed and the TOML
+    /// file is missing. They will be removed in a future release.
+    #[deprecated(
+        since = "0.9.0",
+        note = "use boards/relay16.toml instead of compiled-in defaults"
+    )]
     pub fn default_relay16() -> Self {
         Self {
             board: BoardInfo {
@@ -236,6 +256,15 @@ impl BoardDef {
     }
 
     /// Compiled defaults for the Sequent 8-Relay HAT.
+    ///
+    /// # Deprecated
+    /// Use `boards/relay8.toml` instead. These compiled-in defaults are
+    /// only reachable when `--builtin-defaults` is passed and the TOML
+    /// file is missing. They will be removed in a future release.
+    #[deprecated(
+        since = "0.9.0",
+        note = "use boards/relay8.toml instead of compiled-in defaults"
+    )]
     pub fn default_relay8() -> Self {
         Self {
             board: BoardInfo {
@@ -266,6 +295,7 @@ impl BoardDef {
 // ════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::registers;

@@ -137,16 +137,22 @@ async fn main() -> Result<()> {
         }
     }
 
+    // The default_*() fallbacks are deprecated — TOML files are the
+    // primary source.  These calls only matter when --builtin-defaults
+    // is passed and the TOML file is missing.
+    #[allow(deprecated)]
     let megaind_def = BoardDef::load_or_default(
         &args.boards_dir.join("megaind.toml"),
         BoardDef::default_megaind(),
         args.builtin_defaults,
     )?;
+    #[allow(deprecated)]
     let relay16_def = BoardDef::load_or_default(
         &args.boards_dir.join("relay16.toml"),
         BoardDef::default_relay16(),
         args.builtin_defaults,
     )?;
+    #[allow(deprecated)]
     let relay8_def = BoardDef::load_or_default(
         &args.boards_dir.join("relay8.toml"),
         BoardDef::default_relay8(),
