@@ -13,7 +13,11 @@ use crate::registers::{
 };
 
 /// Cached output state for relays, OD outputs, and analog outputs.
+///
+/// The OD, voltage, and mA output fields are used from Linux-only HAL
+/// code (`megaind.rs`) and tests, so they appear unused on Windows builds.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct OutputCache {
     relays: [Option<bool>; RELAY16_CHANNELS],
     od_outputs: [Option<bool>; OD_CHANNELS],
@@ -21,6 +25,7 @@ pub struct OutputCache {
     ma_outputs: [Option<u16>; I4_20_OUT_CHANNELS],
 }
 
+#[allow(dead_code)] // methods called from Linux-only HAL code and tests
 impl OutputCache {
     /// Create a new cache with all states unknown (`None`).
     pub fn new() -> Self {
@@ -137,6 +142,7 @@ impl OutputCache {
     }
 
     /// Clear cached state so the next cycle retries the write.
+    #[allow(dead_code)] // called from Linux-only HAL code
     pub fn invalidate_ma_out(&mut self, index: usize) {
         if let Some(slot) = self.ma_outputs.get_mut(index) {
             *slot = None;

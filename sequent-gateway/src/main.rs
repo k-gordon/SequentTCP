@@ -1,4 +1,5 @@
 mod board_def;
+mod board_registry;
 mod cache;
 mod channel_watchdog;
 mod cli;
@@ -19,15 +20,16 @@ use clap::Parser;
 use tracing::{debug, error, info, warn};
 
 use board_def::BoardDef;
+use board_registry::BoardRegistry;
 use cache::OutputCache;
 use channel_watchdog::ChannelWatchdog;
 use cli::Cli;
 use databank::DataBank;
 use hal::megaind::MegaIndBoard;
 use hal::relay16::RelayBoard;
+use hal::traits::BoardCapability;
 use health::HealthStats;
 use i2c_recovery::I2cWatchdog;
-use databank::{HR_I4_20_OUT_BASE, HR_U0_10_OUT_BASE};
 use registers::{
     I4_20_IN_CHANNELS, I4_20_OUT_CHANNELS, OD_CHANNELS, OPTO_CHANNELS,
     U0_10_IN_CHANNELS, U0_10_OUT_CHANNELS,
@@ -117,10 +119,6 @@ async fn main() -> Result<()> {
         args.boards.iter().map(|s| s.to_lowercase()).collect()
     };
 
-    let use_megaind = board_types.iter().any(|b| b == "megaind");
-    let use_relay16 = board_types.iter().any(|b| b == "relay16");
-    let use_relay8 = board_types.iter().any(|b| b == "relay8");
-
     // Validate board types
     for bt in &board_types {
         match bt.as_str() {
@@ -149,17 +147,15 @@ async fn main() -> Result<()> {
         args.builtin_defaults,
     )?;
 
-    // Pick the relay board def for the poll loop (relay16 takes priority
-    // if both are specified; relay8 uses the same RelayBoard HAL).
-    let (relay_def, relay_count) = if use_relay16 {
-        let count = relay16_def.channels.relays.unwrap_or(16) as usize;
-        (relay16_def, count)
-    } else if use_relay8 {
-        let count = relay8_def.channels.relays.unwrap_or(8) as usize;
-        (relay8_def, count)
+    // Pick the relay board def (relay16 takes priority if both are specified;
+    // relay8 uses the same RelayBoard HAL).
+    let has_relay = board_types.iter().any(|b| b == "relay16" || b == "relay8");
+    let relay_def = if board_types.iter().any(|b| b == "relay16") {
+        relay16_def
+    } else if board_types.iter().any(|b| b == "relay8") {
+        relay8_def
     } else {
-        // No relay board requested — use relay16 def but poll loop will skip
-        (relay16_def, 0usize)
+        relay16_def // unused fallback
     };
 
     info!(
@@ -167,7 +163,7 @@ async fn main() -> Result<()> {
         env!("CARGO_PKG_VERSION")
     );
     info!("Boards: [{}]", board_types.join(", "));
-    if use_megaind {
+    if board_types.iter().any(|b| b == "megaind") {
         info!(
             "Industrial HAT: stack {} → I²C 0x{:02X} ({})",
             args.ind_stack,
@@ -175,7 +171,8 @@ async fn main() -> Result<()> {
             megaind_def.board.name
         );
     }
-    if use_relay16 || use_relay8 {
+    if has_relay {
+        let relay_count = relay_def.channels.relays.unwrap_or(16) as usize;
         info!(
             "Relay HAT:      stack {} → I²C 0x{:02X} ({}, {} channels)",
             args.relay_stack,
@@ -222,33 +219,24 @@ async fn main() -> Result<()> {
         let db = data_bank.clone();
         let run = running.clone();
         let hs = health_stats.clone();
-        let ind_stack = args.ind_stack;
-        let relay_stack = args.relay_stack;
-        let map_opto = args.map_opto_to_reg;
-        let log_interval = args.log_interval;
-        let i2c_reset_threshold = args.i2c_reset_threshold;
-        let channel_fault_threshold = args.channel_fault_threshold;
-        let relay_verify_interval = args.relay_verify_interval;
+
+        let config = PollConfig {
+            ind_stack: args.ind_stack,
+            relay_stack: args.relay_stack,
+            map_opto: args.map_opto_to_reg,
+            log_interval: args.log_interval,
+            i2c_reset_threshold: args.i2c_reset_threshold,
+            channel_fault_threshold: args.channel_fault_threshold,
+            relay_verify_interval: args.relay_verify_interval,
+            megaind_def,
+            relay_def,
+            board_types,
+        };
 
         std::thread::Builder::new()
             .name("i2c-poll".into())
             .spawn(move || {
-                poll_loop(
-                    db,
-                    run,
-                    ind_stack,
-                    relay_stack,
-                    map_opto,
-                    log_interval,
-                    megaind_def,
-                    relay_def,
-                    i2c_reset_threshold,
-                    channel_fault_threshold,
-                    hs,
-                    relay_count,
-                    use_megaind,
-                    relay_verify_interval,
-                );
+                poll_loop(db, run, config, hs);
             })?
     };
 
@@ -289,78 +277,98 @@ async fn main() -> Result<()> {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// Poll loop configuration
+// ════════════════════════════════════════════════════════════════════════
+
+/// All parameters needed by the I²C poll loop, replacing the former 14
+/// positional arguments.
+struct PollConfig {
+    ind_stack: u8,
+    relay_stack: u8,
+    map_opto: bool,
+    log_interval: u64,
+    i2c_reset_threshold: u32,
+    channel_fault_threshold: u32,
+    relay_verify_interval: u32,
+    megaind_def: BoardDef,
+    relay_def: BoardDef,
+    board_types: Vec<String>,
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Board registry builder
+// ════════════════════════════════════════════════════════════════════════
+
+/// Construct a [`BoardRegistry`] from the poll configuration.
+///
+/// Called at startup and after I²C bus recovery to re-open device file
+/// descriptors.
+fn build_registry(config: &PollConfig) -> BoardRegistry {
+    let mut registry = BoardRegistry::new();
+    for bt in &config.board_types {
+        match bt.as_str() {
+            "megaind" => {
+                match MegaIndBoard::new(I2C_BUS, config.ind_stack, &config.megaind_def) {
+                    Ok(mut b) => {
+                        if let Ok((major, minor)) = b.read_firmware_version() {
+                            info!("Industrial HAT firmware: v{major:02}.{minor:02}");
+                        }
+                        registry.register(Box::new(b));
+                    }
+                    Err(e) => error!("Failed to open Industrial HAT: {e:#}"),
+                }
+            }
+            "relay16" | "relay8" => {
+                match RelayBoard::new(I2C_BUS, config.relay_stack, &config.relay_def) {
+                    Ok(b) => {
+                        info!("Relay board opened: {} channels", b.relay_count());
+                        registry.register(Box::new(b));
+                    }
+                    Err(e) => error!("Failed to open Relay HAT: {e:#}"),
+                }
+            }
+            _ => {}
+        }
+    }
+    registry
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // I²C Poll Loop
 // ════════════════════════════════════════════════════════════════════════
 
 /// Blocking poll loop running in a dedicated OS thread.
 ///
 /// Each 100 ms tick:
-///   1. Read all hardware inputs via I²C
-///   2. Update the shared Modbus data bank
-///   3. Apply coil writes to hardware (with state caching)
+///   1. Iterate registered boards calling `poll_inputs()`
+///   2. Apply output state via `apply_outputs()`
+///   3. Relay read-back verification (configurable interval)
 ///   4. Log a heartbeat summary every `log_interval` seconds
 fn poll_loop(
     data_bank: Arc<RwLock<DataBank>>,
     running: Arc<AtomicBool>,
-    ind_stack: u8,
-    relay_stack: u8,
-    map_opto: bool,
-    log_interval: u64,
-    megaind_def: BoardDef,
-    relay_def: BoardDef,
-    i2c_reset_threshold: u32,
-    channel_fault_threshold: u32,
+    config: PollConfig,
     health_stats: Arc<HealthStats>,
-    relay_count: usize,
-    use_megaind: bool,
-    relay_verify_interval: u32,
 ) {
-    // ── Initialise hardware ──────────────────────────────────────────
-    let mut ind_board = if use_megaind {
-        match MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def) {
-            Ok(mut b) => {
-                if let Ok((major, minor)) = b.read_firmware_version() {
-                    info!("Industrial HAT firmware: v{major:02}.{minor:02}");
-                }
-                Some(b)
-            }
-            Err(e) => {
-                error!("Failed to open Industrial HAT: {e:#}");
-                None
-            }
-        }
-    } else {
-        None
-    };
+    // ── Build board registry ─────────────────────────────────────────
+    let mut registry = build_registry(&config);
+    let relay_count = registry.total_relay_count();
 
-    let mut rel_board = if relay_count > 0 {
-        match RelayBoard::new(I2C_BUS, relay_stack, &relay_def) {
-            Ok(b) => {
-                info!("Relay board opened: {} channels", b.relay_count());
-                Some(b)
-            }
-            Err(e) => {
-                error!("Failed to open Relay HAT: {e:#}");
-                None
-            }
-        }
-    } else {
-        None
-    };
+    registry.log_startup_summary();
 
     let mut cache = OutputCache::new();
-    let mut watchdog = I2cWatchdog::new(i2c_reset_threshold);
-    let mut ch_wd = ChannelWatchdog::new(channel_fault_threshold);
+    let mut watchdog = I2cWatchdog::new(config.i2c_reset_threshold);
+    let mut ch_wd = ChannelWatchdog::new(config.channel_fault_threshold);
     let mut last_heartbeat = Instant::now();
-    let heartbeat_duration = Duration::from_secs(log_interval);
+    let heartbeat_duration = Duration::from_secs(config.log_interval);
     let mut tick_count: u32 = 0;
 
-    if relay_verify_interval > 0 {
-        info!("Relay read-back verification enabled (every {relay_verify_interval} ticks)");
+    if config.relay_verify_interval > 0 && relay_count > 0 {
+        info!("Relay read-back verification enabled (every {} ticks)", config.relay_verify_interval);
     }
 
-    if i2c_reset_threshold > 0 {
-        info!("I²C bus recovery enabled (threshold: {i2c_reset_threshold} consecutive failures)");
+    if config.i2c_reset_threshold > 0 {
+        info!("I²C bus recovery enabled (threshold: {} consecutive failures)", config.i2c_reset_threshold);
     }
 
     info!("I²C poll loop started ({}Hz)", 1000 / POLL_INTERVAL.as_millis());
@@ -369,43 +377,53 @@ fn poll_loop(
     while running.load(Ordering::Relaxed) {
         let cycle_start = Instant::now();
 
-        // 1. READ HARDWARE ────────────────────────────────────────────
-        let ma_inputs = ind_board
-            .as_mut()
-            .and_then(|b| match b.read_4_20ma_inputs() {
-                Ok(v) => { watchdog.record_success(); Some(ch_wd.update_ma(v)) }
-                Err(_) => { watchdog.record_failure(); health_stats.inc_i2c_errors(); Some(ch_wd.fallback_ma()) }
-            })
-            .unwrap_or_else(|| ch_wd.fallback_ma());
+        // 1. READ HARDWARE (poll_inputs) ──────────────────────────────
+        {
+            let mut db = data_bank.write().unwrap();
+            let mut any_failure = false;
+            for board in registry.boards_mut() {
+                match board.poll_inputs(&mut db) {
+                    Ok(()) => {
+                        watchdog.record_success();
+                    }
+                    Err(e) => {
+                        watchdog.record_failure();
+                        health_stats.inc_i2c_errors();
+                        error!("{} poll_inputs failed: {e:#}", board.name());
+                        any_failure = true;
+                    }
+                }
+            }
 
-        let v_inputs = ind_board
-            .as_mut()
-            .and_then(|b| match b.read_0_10v_inputs() {
-                Ok(v) => { watchdog.record_success(); Some(ch_wd.update_volt(v)) }
-                Err(_) => { watchdog.record_failure(); health_stats.inc_i2c_errors(); Some(ch_wd.fallback_volt()) }
-            })
-            .unwrap_or_else(|| ch_wd.fallback_volt());
+            // Channel watchdog: track success/failure across all channels
+            if registry.has_capability(BoardCapability::AnalogInputs) {
+                if !any_failure {
+                    for ch in channel_watchdog::Channel::ALL {
+                        ch_wd.record_success(ch);
+                    }
+                } else {
+                    for ch in channel_watchdog::Channel::ALL {
+                        ch_wd.record_failure(ch);
+                    }
+                }
+            }
 
-        let voltage = ind_board
-            .as_mut()
-            .and_then(|b| match b.read_system_voltage() {
-                Ok(v) => { watchdog.record_success(); Some(ch_wd.update_psu(v)) }
-                Err(_) => { watchdog.record_failure(); health_stats.inc_i2c_errors(); Some(ch_wd.fallback_psu()) }
-            })
-            .unwrap_or_else(|| ch_wd.fallback_psu());
-
-        let (opto_val, opto_bits) = ind_board
-            .as_mut()
-            .and_then(|b| match b.read_opto_inputs() {
-                Ok(v) => { watchdog.record_success(); Some(ch_wd.update_opto(v.0, v.1)) }
-                Err(_) => { watchdog.record_failure(); health_stats.inc_i2c_errors(); Some(ch_wd.fallback_opto()) }
-            })
-            .unwrap_or_else(|| ch_wd.fallback_opto());
+            // map_opto: reconstruct bitmask from discrete_inputs → HR 15
+            if config.map_opto {
+                let mut bitmask: u16 = 0;
+                for (i, &bit) in db.discrete_inputs[..OPTO_CHANNELS].iter().enumerate() {
+                    if bit {
+                        bitmask |= 1 << i;
+                    }
+                }
+                db.holding_registers[15] = bitmask;
+            }
+        }
 
         // ── I²C bus recovery check ──────────────────────────────────
-        // Trigger if bus-level watchdog hits threshold OR all channels fault
         let bus_recovery_needed =
-            (watchdog.consecutive_failures() >= i2c_reset_threshold && i2c_reset_threshold > 0)
+            (watchdog.consecutive_failures() >= config.i2c_reset_threshold
+                && config.i2c_reset_threshold > 0)
             || ch_wd.all_faulted();
 
         if bus_recovery_needed {
@@ -414,158 +432,40 @@ fn poll_loop(
             }
             if watchdog.attempt_recovery() {
                 // Re-open I²C device file descriptors
-                if use_megaind {
-                    ind_board = MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def).ok();
-                }
-                if relay_count > 0 {
-                    rel_board = RelayBoard::new(I2C_BUS, relay_stack, &relay_def).ok();
-                }
+                registry = build_registry(&config);
                 cache = OutputCache::new(); // force re-sync all outputs
                 continue; // skip rest of this cycle
             }
         }
 
-        // 2. UPDATE MODBUS DATA BANK ──────────────────────────────────
+        // 2. APPLY OUTPUTS (apply_outputs) ────────────────────────────
         {
-            let mut db = data_bank.write().unwrap();
-
-            // 4-20mA → holding registers 0–7 (mA × 100)
-            for (i, &ma) in ma_inputs.iter().enumerate() {
-                db.holding_registers[i] = (ma * 100.0) as u16;
-            }
-
-            // PSU voltage → holding register 8 (V × 100)
-            db.holding_registers[8] = (voltage * 100.0) as u16;
-
-            // 0-10V → holding registers 10–13 (V × 100)
-            for (i, &v) in v_inputs.iter().enumerate() {
-                db.holding_registers[10 + i] = (v * 100.0) as u16;
-            }
-
-            // Opto bitmask → holding register 15 (optional)
-            if map_opto {
-                db.holding_registers[15] = opto_val as u16;
-            }
-
-            // Opto bits → discrete inputs 0–7
-            db.discrete_inputs[..OPTO_CHANNELS].copy_from_slice(&opto_bits);
-        }
-
-        // 3. APPLY OUTPUTS ────────────────────────────────────────────
-        let (coils, v_out_regs, ma_out_regs) = {
             let db = data_bank.read().unwrap();
-            let mut v_out = [0u16; U0_10_OUT_CHANNELS];
-            let mut ma_out = [0u16; I4_20_OUT_CHANNELS];
-            v_out.copy_from_slice(
-                &db.holding_registers[HR_U0_10_OUT_BASE..HR_U0_10_OUT_BASE + U0_10_OUT_CHANNELS],
-            );
-            ma_out.copy_from_slice(
-                &db.holding_registers[HR_I4_20_OUT_BASE..HR_I4_20_OUT_BASE + I4_20_OUT_CHANNELS],
-            );
-            (db.coils, v_out, ma_out)
-        };
-
-        // Relays (coils 0..relay_count)
-        if let Some(ref mut board) = rel_board {
-            for i in 0..relay_count {
-                if cache.should_update_relay(i, coils[i]) {
-                    let ch = (i + 1) as u8;
-                    match board.set_relay(ch, coils[i]) {
-                        Ok(()) => {
-                            cache.confirm_relay(i, coils[i]);
-                            info!(
-                                "Relay {} → {}",
-                                ch,
-                                if coils[i] { "ON" } else { "OFF" }
-                            );
-                        }
-                        Err(e) => {
-                            cache.invalidate_relay(i);
-                            health_stats.inc_i2c_errors();
-                            error!("Relay {} write failed: {e:#}", ch);
-                        }
-                    }
+            for board in registry.boards_mut() {
+                if let Err(e) = board.apply_outputs(&db, &mut cache) {
+                    health_stats.inc_i2c_errors();
+                    error!("{} apply_outputs failed: {e:#}", board.name());
                 }
             }
         }
 
-        // OD outputs 1–4 (coils 16–19)
-        if let Some(ref mut board) = ind_board {
-            for i in 0..OD_CHANNELS {
-                if cache.should_update_od(i, coils[16 + i]) {
-                    let ch = (i + 1) as u8;
-                    match board.set_od_output(ch, coils[16 + i]) {
-                        Ok(()) => {
-                            cache.confirm_od(i, coils[16 + i]);
-                            info!(
-                                "OD output {} → {}",
-                                ch,
-                                if coils[16 + i] { "ON" } else { "OFF" }
-                            );
-                        }
-                        Err(e) => {
-                            cache.invalidate_od(i);
-                            health_stats.inc_i2c_errors();
-                            error!("OD output {} write failed: {e:#}", ch);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Analog outputs: 0-10V (HR 16-19) and 4-20mA (HR 20-23)
-        if let Some(ref mut board) = ind_board {
-            for i in 0..U0_10_OUT_CHANNELS {
-                if cache.should_update_v_out(i, v_out_regs[i]) {
-                    let mv = v_out_regs[i].saturating_mul(10); // Modbus ×100 → mV
-                    let ch = (i + 1) as u8;
-                    match board.write_0_10v_output(ch, mv) {
-                        Ok(()) => {
-                            cache.confirm_v_out(i, v_out_regs[i]);
-                            info!("0-10V output {} → {:.2} V", ch, v_out_regs[i] as f32 / 100.0);
-                        }
-                        Err(e) => {
-                            cache.invalidate_v_out(i);
-                            health_stats.inc_i2c_errors();
-                            error!("0-10V output {} write failed: {e:#}", ch);
-                        }
-                    }
-                }
-            }
-
-            for i in 0..I4_20_OUT_CHANNELS {
-                if cache.should_update_ma_out(i, ma_out_regs[i]) {
-                    let ua = ma_out_regs[i].saturating_mul(10); // Modbus ×100 → µA
-                    let ch = (i + 1) as u8;
-                    match board.write_4_20ma_output(ch, ua) {
-                        Ok(()) => {
-                            cache.confirm_ma_out(i, ma_out_regs[i]);
-                            info!("4-20mA output {} → {:.2} mA", ch, ma_out_regs[i] as f32 / 100.0);
-                        }
-                        Err(e) => {
-                            cache.invalidate_ma_out(i);
-                            health_stats.inc_i2c_errors();
-                            error!("4-20mA output {} write failed: {e:#}", ch);
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3b. RELAY READ-BACK VERIFICATION ────────────────────────────
+        // 3. RELAY READ-BACK VERIFICATION ─────────────────────────────
         tick_count = tick_count.wrapping_add(1);
-        if relay_verify_interval > 0
+        if config.relay_verify_interval > 0
             && relay_count > 0
-            && tick_count % relay_verify_interval == 0
+            && tick_count % config.relay_verify_interval == 0
         {
-            if let Some(ref mut board) = rel_board {
+            for board in registry.boards_mut() {
+                if !board.has_capability(BoardCapability::Relays) {
+                    continue;
+                }
+                let board_relays = board.relay_count();
                 match board.read_relay_state() {
                     Ok(actual) => {
-                        let expected = cache.relay_bitmask(relay_count);
+                        let expected = cache.relay_bitmask(board_relays);
                         let diff = actual ^ expected;
-                        // Only compare bits where the cache has a confirmed value
                         let mut effective_diff: u16 = 0;
-                        for i in 0..relay_count {
+                        for i in 0..board_relays {
                             if diff & (1 << i) != 0 && cache.has_confirmed_relay(i) {
                                 effective_diff |= 1 << i;
                             }
@@ -575,7 +475,7 @@ fn poll_loop(
                                 "Relay mismatch: expected 0x{expected:04X}, actual 0x{actual:04X} (diff 0x{effective_diff:04X})"
                             );
                             health_stats.inc_relay_mismatches();
-                            for i in 0..relay_count {
+                            for i in 0..board_relays {
                                 if effective_diff & (1 << i) != 0 {
                                     cache.invalidate_relay(i);
                                 }
@@ -597,7 +497,8 @@ fn poll_loop(
 
         // 4. HEARTBEAT ────────────────────────────────────────────────
         if last_heartbeat.elapsed() >= heartbeat_duration {
-            log_heartbeat(&ma_inputs, &v_inputs, voltage, &opto_bits, &coils, &v_out_regs, &ma_out_regs, &ch_wd, relay_count, watchdog.recovery_count());
+            let db = data_bank.read().unwrap();
+            log_heartbeat(&db, &ch_wd, relay_count, watchdog.recovery_count());
             last_heartbeat = Instant::now();
         }
 
@@ -619,33 +520,29 @@ fn poll_loop(
 // Heartbeat
 // ════════════════════════════════════════════════════════════════════════
 
-/// Log a full system heartbeat matching the Python gateway format,
-/// with per-channel health status from the channel watchdog.
+/// Log a full system heartbeat, reading all values from the shared
+/// [`DataBank`].  Per-channel health status comes from the
+/// [`ChannelWatchdog`].
 fn log_heartbeat(
-    ma_inputs: &[f32; I4_20_IN_CHANNELS],
-    v_inputs: &[f32; U0_10_IN_CHANNELS],
-    voltage: f32,
-    opto_bits: &[bool; OPTO_CHANNELS],
-    coils: &[bool],
-    v_out_regs: &[u16; U0_10_OUT_CHANNELS],
-    ma_out_regs: &[u16; I4_20_OUT_CHANNELS],
+    db: &DataBank,
     ch_wd: &ChannelWatchdog,
     relay_count: usize,
     i2c_recoveries: u32,
 ) {
-    let ma_str: String = ma_inputs
-        .iter()
-        .map(|v| format!("{v:4.1}"))
+    // Reconstruct display values from DataBank (HR stores × 100)
+    let ma_str: String = (0..I4_20_IN_CHANNELS)
+        .map(|i| format!("{:4.1}", db.holding_registers[i] as f32 / 100.0))
         .collect::<Vec<_>>()
         .join(" ");
 
-    let v_str: String = v_inputs
-        .iter()
-        .map(|v| format!("{v:4.1}"))
+    let v_str: String = (0..U0_10_IN_CHANNELS)
+        .map(|i| format!("{:4.1}", db.holding_registers[10 + i] as f32 / 100.0))
         .collect::<Vec<_>>()
         .join(" ");
 
-    let opto_str: String = opto_bits
+    let voltage = db.holding_registers[8] as f32 / 100.0;
+
+    let opto_str: String = db.discrete_inputs[..OPTO_CHANNELS]
         .iter()
         .rev()
         .map(|&b| if b { '1' } else { '0' })
@@ -653,7 +550,7 @@ fn log_heartbeat(
 
     let relay_str: String = (0..relay_count)
         .map(|i| {
-            if coils.get(i).copied().unwrap_or(false) {
+            if db.coils.get(i).copied().unwrap_or(false) {
                 '1'
             } else {
                 '0'
@@ -663,7 +560,7 @@ fn log_heartbeat(
 
     let od_str: String = (0..OD_CHANNELS)
         .map(|i| {
-            if coils.get(16 + i).copied().unwrap_or(false) {
+            if db.coils.get(16 + i).copied().unwrap_or(false) {
                 '1'
             } else {
                 '0'
@@ -677,16 +574,16 @@ fn log_heartbeat(
     info!("0-10V  (1-4) : [{v_str}] V [{}]", ch_wd.status_tag(channel_watchdog::Channel::Volt));
     info!("OPTO INPUTS  : {opto_str} (Binary) [{}]", ch_wd.status_tag(channel_watchdog::Channel::Opto));
     info!("RELAYS (1-16): {relay_str}");
-    let v_out_str: String = v_out_regs
-        .iter()
-        .map(|v| format!("{:5.2}", *v as f32 / 100.0))
+
+    let v_out_str: String = (0..U0_10_OUT_CHANNELS)
+        .map(|i| format!("{:5.2}", db.holding_registers[databank::HR_U0_10_OUT_BASE + i] as f32 / 100.0))
         .collect::<Vec<_>>()
         .join(" ");
-    let ma_out_str: String = ma_out_regs
-        .iter()
-        .map(|v| format!("{:5.2}", *v as f32 / 100.0))
+    let ma_out_str: String = (0..I4_20_OUT_CHANNELS)
+        .map(|i| format!("{:5.2}", db.holding_registers[databank::HR_I4_20_OUT_BASE + i] as f32 / 100.0))
         .collect::<Vec<_>>()
         .join(" ");
+
     info!("OD OUT (1-4) : {od_str}");
     info!("V OUT  (1-4) : [{v_out_str}] V");
     info!("mA OUT (1-4) : [{ma_out_str}] mA");

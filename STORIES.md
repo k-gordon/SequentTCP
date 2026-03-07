@@ -516,13 +516,13 @@
 **so that** I can add new hardware by dropping in a TOML file without recompiling.
 
 **Acceptance Criteria:**
-- [ ] `src/board_registry.rs` — `BoardRegistry` struct holding `Vec<Box<dyn SequentBoard>>`
-- [ ] Boards constructed from `--board` flags + TOML definitions and pushed into the registry
-- [ ] Poll loop iterates `registry.boards()` calling `poll_inputs()` and `apply_outputs()`
-- [ ] Remove `use_megaind` / `use_relay16` / `use_relay8` boolean flags from `main.rs`
-- [ ] Startup log lists all registered boards with name, stack ID, and capabilities
-- [ ] At least 2 boards registered and working end-to-end in tests
-- [ ] Backward compatible: same behaviour as today when using default `--board` flags
+- [x] `src/board_registry.rs` — `BoardRegistry` struct holding `Vec<Box<dyn SequentBoard>>`
+- [x] Boards constructed from `--board` flags + TOML definitions and pushed into the registry
+- [x] Poll loop iterates `registry.boards()` calling `poll_inputs()` and `apply_outputs()`
+- [x] Remove `use_megaind` / `use_relay16` / `use_relay8` boolean flags from `main.rs`
+- [x] Startup log lists all registered boards with name, stack ID, and capabilities
+- [x] At least 2 boards registered and working end-to-end in tests
+- [x] Backward compatible: same behaviour as today when using default `--board` flags
 
 ---
 

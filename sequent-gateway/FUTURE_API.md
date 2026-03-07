@@ -7,7 +7,7 @@
 
 ---
 
-## 1. `SequentBoard` Trait & `BoardCapability` Enum ✅ Wired (SEQGW-25)
+## 1. `SequentBoard` Trait & `BoardCapability` Enum ✅ Wired (SEQGW-25, SEQGW-26)
 
 **Files:** `src/hal/traits.rs`
 
@@ -51,8 +51,8 @@ This would let the gateway load an arbitrary number of boards from
 TOML config and iterate them generically, instead of hard-coding
 `use_megaind` / `use_relay16` / `use_relay8` branches in `main.rs`.
 
-**Next step:** SEQGW-26 (Board Registry) will build the `Vec<Box<dyn
-SequentBoard>>` and replace the current concrete-typed poll loop.
+**Next step:** SEQGW-27 (stack_id Getters) will use `board.stack_id()`
+from trait objects for all startup and heartbeat logging.
 
 ---
 

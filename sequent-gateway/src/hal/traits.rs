@@ -90,6 +90,14 @@ pub trait SequentBoard: Send {
     fn apply_outputs(&mut self, _db: &DataBank, _cache: &mut OutputCache) -> Result<()> {
         Ok(())
     }
+
+    /// Read the current relay output state as a bitmask.
+    ///
+    /// Returns a `u16` where bit 0 = relay 1, bit 1 = relay 2, etc.
+    /// The default returns 0 (for boards without relays).
+    fn read_relay_state(&mut self) -> Result<u16> {
+        Ok(0)
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════

@@ -66,12 +66,19 @@ impl ChannelState {
 // ════════════════════════════════════════════════════════════════════════
 
 /// Tracks per-channel I²C read health and caches last-known-good values.
+///
+/// The last-known-good value fields (`last_ma`, `last_volt`, etc.) are
+/// retained for possible future per-read fallback support but are
+/// currently unused — the [`DataBank`] now serves as the fallback
+/// buffer since `poll_inputs()` writes directly to it.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ChannelWatchdog {
     states: [ChannelState; 4],
     fault_threshold: u32,
 
-    // Last-known-good values
+    // Last-known-good values (currently unused; DataBank retains stale
+    // values on read failure, providing equivalent fallback behavior).
     last_ma: [f32; I4_20_IN_CHANNELS],
     last_volt: [f32; U0_10_IN_CHANNELS],
     last_psu: f32,
@@ -170,8 +177,14 @@ impl ChannelWatchdog {
     }
 
     // ── Last-known-good value management ─────────────────────────────
+    //
+    // These methods are currently unused — `poll_inputs()` writes directly
+    // to the DataBank, which retains stale values on failure (equivalent
+    // fallback behavior).  Retained for potential future per-read
+    // fallback support.
 
     /// Store a good 4-20 mA reading and return it.
+    #[allow(dead_code)]
     pub fn update_ma(&mut self, values: [f32; I4_20_IN_CHANNELS]) -> [f32; I4_20_IN_CHANNELS] {
         self.record_success(Channel::Ma);
         self.last_ma = values;
@@ -179,12 +192,14 @@ impl ChannelWatchdog {
     }
 
     /// Get last-known-good 4-20 mA values (after a failed read).
+    #[allow(dead_code)]
     pub fn fallback_ma(&mut self) -> [f32; I4_20_IN_CHANNELS] {
         self.record_failure(Channel::Ma);
         self.last_ma
     }
 
     /// Store a good 0-10 V reading and return it.
+    #[allow(dead_code)]
     pub fn update_volt(&mut self, values: [f32; U0_10_IN_CHANNELS]) -> [f32; U0_10_IN_CHANNELS] {
         self.record_success(Channel::Volt);
         self.last_volt = values;
@@ -192,12 +207,14 @@ impl ChannelWatchdog {
     }
 
     /// Get last-known-good 0-10 V values (after a failed read).
+    #[allow(dead_code)]
     pub fn fallback_volt(&mut self) -> [f32; U0_10_IN_CHANNELS] {
         self.record_failure(Channel::Volt);
         self.last_volt
     }
 
     /// Store a good PSU voltage reading and return it.
+    #[allow(dead_code)]
     pub fn update_psu(&mut self, value: f32) -> f32 {
         self.record_success(Channel::Psu);
         self.last_psu = value;
@@ -205,12 +222,14 @@ impl ChannelWatchdog {
     }
 
     /// Get last-known-good PSU voltage (after a failed read).
+    #[allow(dead_code)]
     pub fn fallback_psu(&mut self) -> f32 {
         self.record_failure(Channel::Psu);
         self.last_psu
     }
 
     /// Store a good opto reading and return it.
+    #[allow(dead_code)]
     pub fn update_opto(&mut self, val: u8, bits: [bool; OPTO_CHANNELS]) -> (u8, [bool; OPTO_CHANNELS]) {
         self.record_success(Channel::Opto);
         self.last_opto_val = val;
@@ -219,6 +238,7 @@ impl ChannelWatchdog {
     }
 
     /// Get last-known-good opto values (after a failed read).
+    #[allow(dead_code)]
     pub fn fallback_opto(&mut self) -> (u8, [bool; OPTO_CHANNELS]) {
         self.record_failure(Channel::Opto);
         (self.last_opto_val, self.last_opto_bits)
