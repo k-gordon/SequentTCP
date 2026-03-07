@@ -1,7 +1,7 @@
 # SequentTCP — Modbus TCP ↔ I²C Gateway
 
 A Modbus TCP gateway for **Sequent Microsystems** Raspberry Pi HATs.  
-It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware, exposing relays, analog inputs, opto-isolated inputs, and open-drain outputs over standard Modbus registers.
+It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware, exposing relays, analog inputs/outputs, opto-isolated inputs, and open-drain outputs over standard Modbus registers.
 
 ## Supported Hardware
 
@@ -23,6 +23,8 @@ It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardwa
 | **Holding Registers** (RO) | 8 | Industrial Board — PSU Voltage (V × 100) |
 | **Holding Registers** (RO) | 10–13 | Industrial Board — 0-10 V Inputs 1–4 (V × 100) |
 | **Holding Registers** (RO) | 15 | Opto-Input Bitmask (0–255) — only with `--map-opto-to-reg` |
+| **Holding Registers** (R/W) | 16–19 | Industrial Board — 0-10 V Outputs 1–4 (V × 100) |
+| **Holding Registers** (R/W) | 20–23 | Industrial Board — 4-20 mA Outputs 1–4 (mA × 100) |
 
 ## Quick Start
 

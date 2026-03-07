@@ -157,6 +157,12 @@ pub const OPTO_CHANNELS: usize = 8;
 /// Number of open-drain output channels on the Industrial HAT.
 pub const OD_CHANNELS: usize = 4;
 
+/// Number of 0-10V analog output channels on the Industrial HAT.
+pub const U0_10_OUT_CHANNELS: usize = 4;
+
+/// Number of 4-20mA analog output channels on the Industrial HAT.
+pub const I4_20_OUT_CHANNELS: usize = 4;
+
 /// Number of relays on the 16-Relay HAT.
 pub const RELAY16_CHANNELS: usize = 16;
 

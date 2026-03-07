@@ -342,11 +342,11 @@
 **so that** I can control analog outputs from my PLC program.
 
 **Acceptance Criteria:**
-- [ ] Holding registers for 0-10 V outputs (4 channels) — writable
-- [ ] Holding registers for 4-20 mA outputs (4 channels) — writable
-- [ ] Values written as integer × 100 (matching input scaling convention)
-- [ ] State-cached (only write on change)
-- [ ] Register addresses documented in README memory map
+- [x] Holding registers for 0-10 V outputs (4 channels) — writable (HR 16–19)
+- [x] Holding registers for 4-20 mA outputs (4 channels) — writable (HR 20–23)
+- [x] Values written as integer × 100 (matching input scaling convention)
+- [x] State-cached (only write on change)
+- [x] Register addresses documented in README memory map
 
 ---
 

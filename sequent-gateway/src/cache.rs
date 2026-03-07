@@ -8,13 +8,17 @@
 //! On startup, all slots are `None` (unknown), forcing every output
 //! to be written on the first cycle so hardware is synchronised.
 
-use crate::registers::{OD_CHANNELS, RELAY16_CHANNELS};
+use crate::registers::{
+    I4_20_OUT_CHANNELS, OD_CHANNELS, RELAY16_CHANNELS, U0_10_OUT_CHANNELS,
+};
 
-/// Cached output state for relays and OD outputs.
+/// Cached output state for relays, OD outputs, and analog outputs.
 #[derive(Debug)]
 pub struct OutputCache {
     relays: [Option<bool>; RELAY16_CHANNELS],
     od_outputs: [Option<bool>; OD_CHANNELS],
+    v_outputs: [Option<u16>; U0_10_OUT_CHANNELS],
+    ma_outputs: [Option<u16>; I4_20_OUT_CHANNELS],
 }
 
 impl OutputCache {
@@ -23,6 +27,8 @@ impl OutputCache {
         Self {
             relays: [None; RELAY16_CHANNELS],
             od_outputs: [None; OD_CHANNELS],
+            v_outputs: [None; U0_10_OUT_CHANNELS],
+            ma_outputs: [None; I4_20_OUT_CHANNELS],
         }
     }
 
@@ -68,6 +74,52 @@ impl OutputCache {
     /// Clear cached state so the next cycle retries the write.
     pub fn invalidate_od(&mut self, index: usize) {
         if let Some(slot) = self.od_outputs.get_mut(index) {
+            *slot = None;
+        }
+    }
+
+    // ── 0-10 V Analog Outputs ────────────────────────────────────────
+
+    /// Returns `true` if the 0-10V output at `index` needs a write.
+    pub fn should_update_v_out(&self, index: usize, new_val: u16) -> bool {
+        self.v_outputs
+            .get(index)
+            .map_or(false, |cached| *cached != Some(new_val))
+    }
+
+    /// Mark 0-10V output at `index` as successfully written.
+    pub fn confirm_v_out(&mut self, index: usize, val: u16) {
+        if let Some(slot) = self.v_outputs.get_mut(index) {
+            *slot = Some(val);
+        }
+    }
+
+    /// Clear cached state so the next cycle retries the write.
+    pub fn invalidate_v_out(&mut self, index: usize) {
+        if let Some(slot) = self.v_outputs.get_mut(index) {
+            *slot = None;
+        }
+    }
+
+    // ── 4-20 mA Analog Outputs ───────────────────────────────────────
+
+    /// Returns `true` if the 4-20mA output at `index` needs a write.
+    pub fn should_update_ma_out(&self, index: usize, new_val: u16) -> bool {
+        self.ma_outputs
+            .get(index)
+            .map_or(false, |cached| *cached != Some(new_val))
+    }
+
+    /// Mark 4-20mA output at `index` as successfully written.
+    pub fn confirm_ma_out(&mut self, index: usize, val: u16) {
+        if let Some(slot) = self.ma_outputs.get_mut(index) {
+            *slot = Some(val);
+        }
+    }
+
+    /// Clear cached state so the next cycle retries the write.
+    pub fn invalidate_ma_out(&mut self, index: usize) {
+        if let Some(slot) = self.ma_outputs.get_mut(index) {
             *slot = None;
         }
     }
@@ -120,5 +172,43 @@ mod tests {
         assert!(cache.should_update_od(2, true));
         cache.invalidate_od(2);
         assert!(cache.should_update_od(2, false));
+    }
+
+    #[test]
+    fn v_out_cache_write_on_change() {
+        let mut cache = OutputCache::new();
+        // New → needs write
+        assert!(cache.should_update_v_out(0, 500));
+        cache.confirm_v_out(0, 500);
+        // Same value → skip
+        assert!(!cache.should_update_v_out(0, 500));
+        // Different value → write
+        assert!(cache.should_update_v_out(0, 750));
+        cache.confirm_v_out(0, 750);
+        assert!(!cache.should_update_v_out(0, 750));
+    }
+
+    #[test]
+    fn ma_out_cache_write_on_change() {
+        let mut cache = OutputCache::new();
+        assert!(cache.should_update_ma_out(1, 1200));
+        cache.confirm_ma_out(1, 1200);
+        assert!(!cache.should_update_ma_out(1, 1200));
+        assert!(cache.should_update_ma_out(1, 1600));
+    }
+
+    #[test]
+    fn analog_out_invalidate_forces_retry() {
+        let mut cache = OutputCache::new();
+        cache.confirm_v_out(2, 300);
+        cache.invalidate_v_out(2);
+        assert!(cache.should_update_v_out(2, 300));
+    }
+
+    #[test]
+    fn analog_out_of_range_returns_false() {
+        let cache = OutputCache::new();
+        assert!(!cache.should_update_v_out(99, 100));
+        assert!(!cache.should_update_ma_out(99, 100));
     }
 }

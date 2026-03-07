@@ -27,7 +27,11 @@ use hal::megaind::MegaIndBoard;
 use hal::relay16::RelayBoard;
 use health::HealthStats;
 use i2c_recovery::I2cWatchdog;
-use registers::{I4_20_IN_CHANNELS, OD_CHANNELS, OPTO_CHANNELS, RELAY16_CHANNELS, U0_10_IN_CHANNELS};
+use databank::{HR_I4_20_OUT_BASE, HR_U0_10_OUT_BASE};
+use registers::{
+    I4_20_IN_CHANNELS, I4_20_OUT_CHANNELS, OD_CHANNELS, OPTO_CHANNELS,
+    RELAY16_CHANNELS, U0_10_IN_CHANNELS, U0_10_OUT_CHANNELS,
+};
 use slave_map::SlaveMap;
 
 /// I²C bus device path (standard on Raspberry Pi).
@@ -371,9 +375,17 @@ fn poll_loop(
         }
 
         // 3. APPLY OUTPUTS ────────────────────────────────────────────
-        let coils = {
+        let (coils, v_out_regs, ma_out_regs) = {
             let db = data_bank.read().unwrap();
-            db.coils
+            let mut v_out = [0u16; U0_10_OUT_CHANNELS];
+            let mut ma_out = [0u16; I4_20_OUT_CHANNELS];
+            v_out.copy_from_slice(
+                &db.holding_registers[HR_U0_10_OUT_BASE..HR_U0_10_OUT_BASE + U0_10_OUT_CHANNELS],
+            );
+            ma_out.copy_from_slice(
+                &db.holding_registers[HR_I4_20_OUT_BASE..HR_I4_20_OUT_BASE + I4_20_OUT_CHANNELS],
+            );
+            (db.coils, v_out, ma_out)
         };
 
         // Relays 1–16 (coils 0–15)
@@ -422,9 +434,46 @@ fn poll_loop(
             }
         }
 
+        // Analog outputs: 0-10V (HR 16-19) and 4-20mA (HR 20-23)
+        if let Some(ref mut board) = ind_board {
+            for i in 0..U0_10_OUT_CHANNELS {
+                if cache.should_update_v_out(i, v_out_regs[i]) {
+                    let mv = v_out_regs[i].saturating_mul(10); // Modbus ×100 → mV
+                    let ch = (i + 1) as u8;
+                    match board.write_0_10v_output(ch, mv) {
+                        Ok(()) => {
+                            cache.confirm_v_out(i, v_out_regs[i]);
+                            info!("0-10V output {} → {:.2} V", ch, v_out_regs[i] as f32 / 100.0);
+                        }
+                        Err(e) => {
+                            cache.invalidate_v_out(i);
+                            error!("0-10V output {} write failed: {e:#}", ch);
+                        }
+                    }
+                }
+            }
+
+            for i in 0..I4_20_OUT_CHANNELS {
+                if cache.should_update_ma_out(i, ma_out_regs[i]) {
+                    let ua = ma_out_regs[i].saturating_mul(10); // Modbus ×100 → µA
+                    let ch = (i + 1) as u8;
+                    match board.write_4_20ma_output(ch, ua) {
+                        Ok(()) => {
+                            cache.confirm_ma_out(i, ma_out_regs[i]);
+                            info!("4-20mA output {} → {:.2} mA", ch, ma_out_regs[i] as f32 / 100.0);
+                        }
+                        Err(e) => {
+                            cache.invalidate_ma_out(i);
+                            error!("4-20mA output {} write failed: {e:#}", ch);
+                        }
+                    }
+                }
+            }
+        }
+
         // 4. HEARTBEAT ────────────────────────────────────────────────
         if last_heartbeat.elapsed() >= heartbeat_duration {
-            log_heartbeat(&ma_inputs, &v_inputs, voltage, &opto_bits, &coils, &ch_wd);
+            log_heartbeat(&ma_inputs, &v_inputs, voltage, &opto_bits, &coils, &v_out_regs, &ma_out_regs, &ch_wd);
             last_heartbeat = Instant::now();
         }
 
@@ -453,6 +502,8 @@ fn log_heartbeat(
     voltage: f32,
     opto_bits: &[bool; OPTO_CHANNELS],
     coils: &[bool],
+    v_out_regs: &[u16; U0_10_OUT_CHANNELS],
+    ma_out_regs: &[u16; I4_20_OUT_CHANNELS],
     ch_wd: &ChannelWatchdog,
 ) {
     let ma_str: String = ma_inputs
@@ -499,7 +550,19 @@ fn log_heartbeat(
     info!("0-10V  (1-4) : [{v_str}] V [{}]", ch_wd.status_tag(channel_watchdog::Channel::Volt));
     info!("OPTO INPUTS  : {opto_str} (Binary) [{}]", ch_wd.status_tag(channel_watchdog::Channel::Opto));
     info!("RELAYS (1-16): {relay_str}");
+    let v_out_str: String = v_out_regs
+        .iter()
+        .map(|v| format!("{:5.2}", *v as f32 / 100.0))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let ma_out_str: String = ma_out_regs
+        .iter()
+        .map(|v| format!("{:5.2}", *v as f32 / 100.0))
+        .collect::<Vec<_>>()
+        .join(" ");
     info!("OD OUT (1-4) : {od_str}");
+    info!("V OUT  (1-4) : [{v_out_str}] V");
+    info!("mA OUT (1-4) : [{ma_out_str}] mA");
     info!("------------------------");
 }
 

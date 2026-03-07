@@ -9,7 +9,9 @@
 //! | 0x02 | Read Discrete Inputs   | Read      |
 //! | 0x03 | Read Holding Registers | Read      |
 //! | 0x05 | Write Single Coil      | Write     |
+//! | 0x06 | Write Single Register  | Write     |
 //! | 0x0F | Write Multiple Coils   | Write     |
+//! | 0x10 | Write Multiple Regs    | Write     |
 //!
 //! Requests are routed by Modbus Unit ID through the [`SlaveMap`] to the
 //! appropriate board's register slice.
@@ -29,7 +31,9 @@ const FC_READ_COILS: u8 = 0x01;
 const FC_READ_DISCRETE_INPUTS: u8 = 0x02;
 const FC_READ_HOLDING_REGISTERS: u8 = 0x03;
 const FC_WRITE_SINGLE_COIL: u8 = 0x05;
+const FC_WRITE_SINGLE_REGISTER: u8 = 0x06;
 const FC_WRITE_MULTIPLE_COILS: u8 = 0x0F;
+const FC_WRITE_MULTIPLE_REGISTERS: u8 = 0x10;
 
 // ── Modbus exception codes ──────────────────────────────────────────
 const EX_ILLEGAL_FUNCTION: u8 = 0x01;
@@ -141,7 +145,9 @@ fn process_request(
     let reg_type = match fc {
         FC_READ_COILS | FC_WRITE_SINGLE_COIL | FC_WRITE_MULTIPLE_COILS => RegType::Coils,
         FC_READ_DISCRETE_INPUTS => RegType::DiscreteInputs,
-        FC_READ_HOLDING_REGISTERS => RegType::HoldingRegisters,
+        FC_READ_HOLDING_REGISTERS
+        | FC_WRITE_SINGLE_REGISTER
+        | FC_WRITE_MULTIPLE_REGISTERS => RegType::HoldingRegisters,
         _ => {
             error!("Unsupported Modbus FC 0x{fc:02X}");
             return exception(fc, EX_ILLEGAL_FUNCTION);
@@ -170,6 +176,12 @@ fn process_request(
         }
         FC_WRITE_MULTIPLE_COILS => {
             write_multiple_coils(fc, data, data_bank, slice.offset, slice.max_count)
+        }
+        FC_WRITE_SINGLE_REGISTER => {
+            write_single_register(fc, data, data_bank, slice.offset, slice.max_count)
+        }
+        FC_WRITE_MULTIPLE_REGISTERS => {
+            write_multiple_registers(fc, data, data_bank, slice.offset, slice.max_count)
         }
         _ => unreachable!(),
     }
@@ -361,6 +373,81 @@ fn write_multiple_coils(
     result
 }
 
+/// FC 0x06 Write Single Register.
+///
+/// Request:  `[addr: u16, value: u16]`
+/// Response: echo of request.
+fn write_single_register(
+    fc: u8,
+    data: &[u8],
+    data_bank: &Arc<RwLock<DataBank>>,
+    offset: usize,
+    max_count: usize,
+) -> Vec<u8> {
+    if data.len() < 4 {
+        return exception(fc, EX_ILLEGAL_DATA_VALUE);
+    }
+
+    let addr = u16::from_be_bytes([data[0], data[1]]) as usize;
+    let value = u16::from_be_bytes([data[2], data[3]]);
+
+    if addr >= max_count {
+        return exception(fc, EX_ILLEGAL_DATA_ADDRESS);
+    }
+
+    let mut db = data_bank.write().unwrap();
+    db.holding_registers[offset + addr] = value;
+
+    // Echo the request PDU back as the response
+    let mut result = Vec::with_capacity(5);
+    result.push(fc);
+    result.extend_from_slice(&data[..4]);
+    result
+}
+
+/// FC 0x10 Write Multiple Registers.
+///
+/// Request:  `[start: u16, qty: u16, byte_count: u8, reg_hi, reg_lo, …]`
+/// Response: `[fc, start: u16, qty: u16]`
+fn write_multiple_registers(
+    fc: u8,
+    data: &[u8],
+    data_bank: &Arc<RwLock<DataBank>>,
+    offset: usize,
+    max_count: usize,
+) -> Vec<u8> {
+    if data.len() < 5 {
+        return exception(fc, EX_ILLEGAL_DATA_VALUE);
+    }
+
+    let start = u16::from_be_bytes([data[0], data[1]]) as usize;
+    let quantity = u16::from_be_bytes([data[2], data[3]]) as usize;
+    let byte_count = data[4] as usize;
+
+    if quantity == 0 || quantity > 123 || byte_count != quantity * 2 {
+        return exception(fc, EX_ILLEGAL_DATA_VALUE);
+    }
+    if data.len() < 5 + byte_count {
+        return exception(fc, EX_ILLEGAL_DATA_VALUE);
+    }
+    if start + quantity > max_count {
+        return exception(fc, EX_ILLEGAL_DATA_ADDRESS);
+    }
+
+    let mut db = data_bank.write().unwrap();
+    for i in 0..quantity {
+        let hi = data[5 + i * 2];
+        let lo = data[5 + i * 2 + 1];
+        db.holding_registers[offset + start + i] = u16::from_be_bytes([hi, lo]);
+    }
+
+    let mut result = Vec::with_capacity(5);
+    result.push(fc);
+    result.extend_from_slice(&(start as u16).to_be_bytes());
+    result.extend_from_slice(&(quantity as u16).to_be_bytes());
+    result
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // Helpers
 // ════════════════════════════════════════════════════════════════════════
@@ -368,4 +455,125 @@ fn write_multiple_coils(
 /// Build a Modbus exception response PDU.
 fn exception(function_code: u8, exception_code: u8) -> Vec<u8> {
     vec![function_code | 0x80, exception_code]
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Tests
+// ════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::databank::DataBank;
+
+    fn make_db() -> Arc<RwLock<DataBank>> {
+        Arc::new(RwLock::new(DataBank::new()))
+    }
+
+    // ── FC 0x06 Write Single Register ────────────────────────────────
+
+    #[test]
+    fn fc06_write_single_register() {
+        let db = make_db();
+        // Write value 0x01F4 (500) to register 16 (0-10V output ch1)
+        let data: &[u8] = &[0x00, 0x10, 0x01, 0xF4]; // addr=16, value=500
+        let resp = write_single_register(FC_WRITE_SINGLE_REGISTER, data, &db, 0, 24);
+        // Response should echo the request
+        assert_eq!(resp[0], FC_WRITE_SINGLE_REGISTER);
+        assert_eq!(&resp[1..5], data);
+        // Verify the register was written
+        let bank = db.read().unwrap();
+        assert_eq!(bank.holding_registers[16], 500);
+    }
+
+    #[test]
+    fn fc06_out_of_range_returns_exception() {
+        let db = make_db();
+        let data: &[u8] = &[0x00, 0x18, 0x01, 0xF4]; // addr=24, beyond max
+        let resp = write_single_register(FC_WRITE_SINGLE_REGISTER, data, &db, 0, 24);
+        assert_eq!(resp[0], FC_WRITE_SINGLE_REGISTER | 0x80);
+        assert_eq!(resp[1], EX_ILLEGAL_DATA_ADDRESS);
+    }
+
+    #[test]
+    fn fc06_with_offset() {
+        let db = make_db();
+        // Multi-slave: Industrial board at offset 0, write register 16 (0-10V out)
+        let data: &[u8] = &[0x00, 0x10, 0x03, 0xE8]; // addr=16, value=1000
+        let resp = write_single_register(FC_WRITE_SINGLE_REGISTER, data, &db, 0, 24);
+        assert_eq!(resp[0], FC_WRITE_SINGLE_REGISTER);
+        let bank = db.read().unwrap();
+        assert_eq!(bank.holding_registers[16], 1000);
+    }
+
+    // ── FC 0x10 Write Multiple Registers ─────────────────────────────
+
+    #[test]
+    fn fc10_write_multiple_registers() {
+        let db = make_db();
+        // Write 4 registers starting at 16: [500, 600, 700, 800]
+        let data: &[u8] = &[
+            0x00, 0x10, // start = 16
+            0x00, 0x04, // quantity = 4
+            0x08,       // byte_count = 8
+            0x01, 0xF4, // 500
+            0x02, 0x58, // 600
+            0x02, 0xBC, // 700
+            0x03, 0x20, // 800
+        ];
+        let resp = write_multiple_registers(FC_WRITE_MULTIPLE_REGISTERS, data, &db, 0, 24);
+        assert_eq!(resp[0], FC_WRITE_MULTIPLE_REGISTERS);
+        assert_eq!(&resp[1..3], &[0x00, 0x10]); // start echoed
+        assert_eq!(&resp[3..5], &[0x00, 0x04]); // qty echoed
+        let bank = db.read().unwrap();
+        assert_eq!(bank.holding_registers[16], 500);
+        assert_eq!(bank.holding_registers[17], 600);
+        assert_eq!(bank.holding_registers[18], 700);
+        assert_eq!(bank.holding_registers[19], 800);
+    }
+
+    #[test]
+    fn fc10_out_of_range_returns_exception() {
+        let db = make_db();
+        // start=22, qty=4 → 22+4=26 > 24
+        let data: &[u8] = &[
+            0x00, 0x16, // start = 22
+            0x00, 0x04, // quantity = 4
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        let resp = write_multiple_registers(FC_WRITE_MULTIPLE_REGISTERS, data, &db, 0, 24);
+        assert_eq!(resp[0], FC_WRITE_MULTIPLE_REGISTERS | 0x80);
+        assert_eq!(resp[1], EX_ILLEGAL_DATA_ADDRESS);
+    }
+
+    #[test]
+    fn fc10_bad_byte_count_returns_exception() {
+        let db = make_db();
+        let data: &[u8] = &[
+            0x00, 0x10, // start = 16
+            0x00, 0x02, // quantity = 2
+            0x03,       // byte_count = 3 (should be 4)
+            0x00, 0x00, 0x00, 0x00,
+        ];
+        let resp = write_multiple_registers(FC_WRITE_MULTIPLE_REGISTERS, data, &db, 0, 24);
+        assert_eq!(resp[0], FC_WRITE_MULTIPLE_REGISTERS | 0x80);
+        assert_eq!(resp[1], EX_ILLEGAL_DATA_VALUE);
+    }
+
+    // ── Read-after-write roundtrip ───────────────────────────────────
+
+    #[test]
+    fn write_then_read_registers_roundtrip() {
+        let db = make_db();
+        // Write register 20 = 1200 (4-20mA output ch1 = 12.00 mA)
+        let wr_data: &[u8] = &[0x00, 0x14, 0x04, 0xB0]; // addr=20, value=1200
+        write_single_register(FC_WRITE_SINGLE_REGISTER, wr_data, &db, 0, 24);
+
+        // Read it back
+        let rd_data: &[u8] = &[0x00, 0x14, 0x00, 0x01]; // start=20, qty=1
+        let resp = read_registers(FC_READ_HOLDING_REGISTERS, rd_data, &db, 0, 24);
+        assert_eq!(resp[0], FC_READ_HOLDING_REGISTERS);
+        assert_eq!(resp[1], 2); // byte_count
+        assert_eq!(u16::from_be_bytes([resp[2], resp[3]]), 1200);
+    }
 }

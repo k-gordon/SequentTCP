@@ -13,13 +13,18 @@ use i2cdev::linux::LinuxI2CDevice;
 use tracing::{debug, warn};
 
 use crate::board_def::BoardDef;
-use crate::registers::{I4_20_IN_CHANNELS, OD_CHANNELS, OPTO_CHANNELS, U0_10_IN_CHANNELS};
+use crate::registers::{
+    I4_20_IN_CHANNELS, I4_20_OUT_CHANNELS, OD_CHANNELS, OPTO_CHANNELS,
+    U0_10_IN_CHANNELS, U0_10_OUT_CHANNELS,
+};
 
 /// Resolved register addresses (extracted from [`BoardDef`] at construction).
 struct Regs {
     relay_set: u8,
     relay_clr: u8,
     opto_in: u8,
+    u0_10_out: u8,
+    i4_20_out: u8,
     i4_20_in: u8,
     u0_10_in: u8,
     diag_24v: u8,
@@ -34,6 +39,8 @@ impl Regs {
             relay_set: r.relay_set.unwrap_or(0x01),
             relay_clr: r.relay_clr.unwrap_or(0x02),
             opto_in: r.opto_in.unwrap_or(0x03),
+            u0_10_out: r.u0_10_out.unwrap_or(0x04),
+            i4_20_out: r.i4_20_out.unwrap_or(0x0C),
             i4_20_in: r.i4_20_in.unwrap_or(0x2C),
             u0_10_in: r.u0_10_in.unwrap_or(0x1C),
             diag_24v: r.diag_24v.unwrap_or(0x73),
@@ -175,6 +182,42 @@ impl MegaIndBoard {
             self.stack_id,
             channel,
             if state { "ON" } else { "OFF" }
+        );
+        Ok(())
+    }
+
+    /// Write a 0-10 V analog output channel.
+    ///
+    /// `channel` is 1-based (1–4).  `millivolts` is the raw I²C value
+    /// (0 = 0 V, 10 000 = 10.000 V).
+    pub fn write_0_10v_output(&mut self, channel: u8, millivolts: u16) -> Result<()> {
+        anyhow::ensure!(
+            (1..=U0_10_OUT_CHANNELS as u8).contains(&channel),
+            "0-10V output channel must be 1–{U0_10_OUT_CHANNELS}, got {channel}"
+        );
+        let reg = self.regs.u0_10_out + (channel - 1) * 2;
+        self.i2c_write(reg, &millivolts.to_le_bytes())?;
+        debug!(
+            "MegaInd stack {} 0-10V ch{} → {} mV",
+            self.stack_id, channel, millivolts
+        );
+        Ok(())
+    }
+
+    /// Write a 4-20 mA analog output channel.
+    ///
+    /// `channel` is 1-based (1–4).  `microamps` is the raw I²C value
+    /// (4 000 = 4.000 mA, 20 000 = 20.000 mA).
+    pub fn write_4_20ma_output(&mut self, channel: u8, microamps: u16) -> Result<()> {
+        anyhow::ensure!(
+            (1..=I4_20_OUT_CHANNELS as u8).contains(&channel),
+            "4-20mA output channel must be 1–{I4_20_OUT_CHANNELS}, got {channel}"
+        );
+        let reg = self.regs.i4_20_out + (channel - 1) * 2;
+        self.i2c_write(reg, &microamps.to_le_bytes())?;
+        debug!(
+            "MegaInd stack {} 4-20mA ch{} → {} µA",
+            self.stack_id, channel, microamps
         );
         Ok(())
     }

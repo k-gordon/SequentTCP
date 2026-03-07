@@ -32,6 +32,8 @@ pub mod megaind {
         pub fn read_0_10v_inputs(&mut self) -> Result<[f32; U0_10_IN_CHANNELS]> { unreachable!() }
         pub fn read_system_voltage(&mut self) -> Result<f32> { unreachable!() }
         pub fn set_od_output(&mut self, _ch: u8, _state: bool) -> Result<()> { unreachable!() }
+        pub fn write_0_10v_output(&mut self, _ch: u8, _mv: u16) -> Result<()> { unreachable!() }
+        pub fn write_4_20ma_output(&mut self, _ch: u8, _ua: u16) -> Result<()> { unreachable!() }
         pub fn read_firmware_version(&mut self) -> Result<(u8, u8)> { unreachable!() }
         pub fn stack_id(&self) -> u8 { self._stack_id }
     }
