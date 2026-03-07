@@ -48,6 +48,8 @@ pub struct HealthStats {
     i2c_errors: AtomicU64,
     /// Total GPIO-level I²C bus recoveries since startup.
     i2c_recoveries: AtomicU32,
+    /// Cumulative relay read-back mismatches since startup.
+    relay_mismatches: AtomicU32,
     /// Epoch instant — used to compute uptime.
     start: Instant,
     /// Per-channel fault flags packed as 4 × u8 in a single u32.
@@ -62,6 +64,7 @@ impl HealthStats {
             last_cycle_us: AtomicU64::new(0),
             i2c_errors: AtomicU64::new(0),
             i2c_recoveries: AtomicU32::new(0),
+            relay_mismatches: AtomicU32::new(0),
             start: Instant::now(),
             channel_status: AtomicU32::new(0),
         }
@@ -80,6 +83,11 @@ impl HealthStats {
     /// Update the I²C bus recovery counter from the watchdog.
     pub fn set_recovery_count(&self, count: u32) {
         self.i2c_recoveries.store(count, Ordering::Relaxed);
+    }
+
+    /// Increment the relay read-back mismatch counter.
+    pub fn inc_relay_mismatches(&self) {
+        self.relay_mismatches.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Snapshot per-channel health from the channel watchdog.
@@ -107,6 +115,7 @@ impl HealthStats {
         let cycle_ms = cycle_us as f64 / 1000.0;
         let errors = self.i2c_errors.load(Ordering::Relaxed);
         let recoveries = self.i2c_recoveries.load(Ordering::Relaxed);
+        let relay_mm = self.relay_mismatches.load(Ordering::Relaxed);
         let cs = self.channel_status.load(Ordering::Relaxed);
 
         let tag = |v: u8| match v {
@@ -125,8 +134,8 @@ impl HealthStats {
         let status = if cs == 0 && errors == 0 { "ok" } else { "degraded" };
 
         format!(
-            r#"{{"status":"{}","uptime_s":{},"last_cycle_ms":{:.2},"i2c_errors":{},"i2c_recoveries":{},"channels":{{"ma":"{}","volt":"{}","psu":"{}","opto":"{}"}}}}"#,
-            status, uptime, cycle_ms, errors, recoveries, ma, volt, psu, opto
+            r#"{{"status":"{}","uptime_s":{},"last_cycle_ms":{:.2},"i2c_errors":{},"i2c_recoveries":{},"relay_mismatches":{},"channels":{{"ma":"{}","volt":"{}","psu":"{}","opto":"{}"}}}}"#,
+            status, uptime, cycle_ms, errors, recoveries, relay_mm, ma, volt, psu, opto
         )
     }
 }
@@ -197,6 +206,7 @@ mod tests {
         assert!(json.contains(r#""last_cycle_ms":0.00"#));
         assert!(json.contains(r#""i2c_errors":0"#));
         assert!(json.contains(r#""i2c_recoveries":0"#));
+        assert!(json.contains(r#""relay_mismatches":0"#));
         assert!(json.contains(r#""ma":"OK""#));
         assert!(json.contains(r#""volt":"OK""#));
         assert!(json.contains(r#""psu":"OK""#));
@@ -229,6 +239,15 @@ mod tests {
         stats.set_recovery_count(2);
         let json = stats.to_json();
         assert!(json.contains(r#""i2c_recoveries":2"#));
+    }
+
+    #[test]
+    fn json_reflects_relay_mismatches() {
+        let stats = HealthStats::new();
+        stats.inc_relay_mismatches();
+        stats.inc_relay_mismatches();
+        let json = stats.to_json();
+        assert!(json.contains(r#""relay_mismatches":2"#));
     }
 
     #[test]

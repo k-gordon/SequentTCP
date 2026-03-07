@@ -18,6 +18,7 @@
 //! | **Holding Registers**| 15      | Opto-input bitmask (0–255, optional)           |
 //! | **Holding Registers**| 16–19   | 0-10 V outputs (V × 100) — **writable**        |
 //! | **Holding Registers**| 20–23   | 4-20 mA outputs (mA × 100) — **writable**      |
+//! | **Holding Registers**| 24      | Relay read-back bitmask (read-only diagnostic)  |
 
 /// Total number of coils: 16 relays + 4 OD outputs.
 pub const COIL_COUNT: usize = 20;
@@ -25,14 +26,17 @@ pub const COIL_COUNT: usize = 20;
 /// Total number of discrete inputs: 8 opto-isolated inputs.
 pub const DISCRETE_INPUT_COUNT: usize = 8;
 
-/// Total number of holding registers (inputs 0–15 + outputs 16–23).
-pub const HOLDING_REGISTER_COUNT: usize = 24;
+/// Total number of holding registers (inputs 0–23 + relay readback 24).
+pub const HOLDING_REGISTER_COUNT: usize = 25;
 
 /// Base holding register for 0-10 V analog outputs.
 pub const HR_U0_10_OUT_BASE: usize = 16;
 
 /// Base holding register for 4-20 mA analog outputs.
 pub const HR_I4_20_OUT_BASE: usize = 20;
+
+/// Holding register for relay read-back bitmask (diagnostic, read-only).
+pub const HR_RELAY_READBACK: usize = 24;
 
 /// Shared Modbus data bank.
 ///
@@ -58,5 +62,18 @@ impl DataBank {
 impl Default for DataBank {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relay_readback_register_is_accessible() {
+        let mut db = DataBank::new();
+        assert_eq!(db.holding_registers[HR_RELAY_READBACK], 0);
+        db.holding_registers[HR_RELAY_READBACK] = 0xABCD;
+        assert_eq!(db.holding_registers[HR_RELAY_READBACK], 0xABCD);
     }
 }

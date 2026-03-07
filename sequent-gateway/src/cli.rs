@@ -89,6 +89,15 @@ pub struct Cli {
     #[arg(long, default_value_t = 5)]
     pub channel_fault_threshold: u32,
 
+    /// Poll ticks between relay read-back verifications (0 = disabled).
+    ///
+    /// When enabled, the gateway reads the actual relay output register every
+    /// N-th poll tick and compares against the cached expected state.
+    /// Mismatches are logged at WARN and the affected relay cache entries are
+    /// invalidated, forcing a re-write on the next cycle.
+    #[arg(long, default_value_t = 10)]
+    pub relay_verify_interval: u32,
+
     /// TCP port for the HTTP health endpoint (disabled if not set).
     ///
     /// When set, a lightweight HTTP server serves `GET /health` with JSON

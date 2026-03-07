@@ -460,13 +460,13 @@
 **so that** a stuck relay or I²C glitch is detected and logged rather than silently ignored.
 
 **Acceptance Criteria:**
-- [ ] Every N-th poll tick (configurable, default every 10th = 1 Hz), call `relay_board.read_relay_state()`
-- [ ] Compare returned bitmask against `OutputCache` expected state
-- [ ] On mismatch: log at `WARN` with expected vs actual bitmask, increment a `relay_mismatch` counter
-- [ ] On mismatch: invalidate affected relay cache entries so next cycle re-writes them
-- [ ] `--relay-verify-interval <N>` CLI flag (default 10, 0 = disabled)
-- [ ] Mismatch counter exposed in `/health` JSON as `"relay_mismatches"`
-- [ ] Unit test: simulated mismatch triggers cache invalidation
+- [x] Every N-th poll tick (configurable, default every 10th = 1 Hz), call `relay_board.read_relay_state()`
+- [x] Compare returned bitmask against `OutputCache` expected state
+- [x] On mismatch: log at `WARN` with expected vs actual bitmask, increment a `relay_mismatch` counter
+- [x] On mismatch: invalidate affected relay cache entries so next cycle re-writes them
+- [x] `--relay-verify-interval <N>` CLI flag (default 10, 0 = disabled)
+- [x] Mismatch counter exposed in `/health` JSON as `"relay_mismatches"`
+- [x] Unit test: simulated mismatch triggers cache invalidation
 
 ---
 
@@ -479,10 +479,10 @@
 **so that** my PLC can verify relay state independently of the coil writes.
 
 **Acceptance Criteria:**
-- [ ] New read-only Holding Register (HR 24 or configurable) contains the last `read_relay_state()` bitmask
-- [ ] Updated at the same frequency as the verify interval (Story 23)
-- [ ] Documented in README memory map
-- [ ] Unit test: verify HR value matches simulated read-back
+- [x] New read-only Holding Register (HR 24 or configurable) contains the last `read_relay_state()` bitmask
+- [x] Updated at the same frequency as the verify interval (Story 23)
+- [x] Documented in README memory map
+- [x] Unit test: verify HR value matches simulated read-back
 
 ---
 

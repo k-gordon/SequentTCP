@@ -82,7 +82,7 @@ or a Modbus diagnostic register block.
 
 ---
 
-## 3. `read_relay_state()`
+## 3. `read_relay_state()` ✅ Wired (SEQGW-23)
 
 **File:** `src/hal/relay16.rs`
 
@@ -196,8 +196,8 @@ If you decide to activate any of these, here's the rough order:
 2. ~~**`Channel::ALL`**~~ ✅ Done — used in `HealthStats::update_channel_status()`
    instead of hard-coding the four channels. (SEQGW-22)
 3. ~~**`recovery_count()`**~~ ✅ Done — added to health JSON and heartbeat log. (SEQGW-21)
-4. **`read_relay_state()`** — add a periodic read-back verification
-   step at the end of the poll loop (e.g. every 10th tick). (SEQGW-23)
+4. ~~**`read_relay_state()`**~~ ✅ Done — periodic read-back verification
+   every N-th tick, mismatches invalidate cache. HR 24 diagnostic register. (SEQGW-23/24)
 5. **`SequentBoard` trait dispatch** — larger refactor; replace the
    `if use_megaind` / `if use_relay16` branching with a board
    registry iterated generically. Best saved for when a third

@@ -130,7 +130,6 @@ impl RelayBoard {
     ///
     /// Returns a `u16` where bit 0 = relay 1, bit 1 = relay 2, … bit 15 = relay 16.
     /// The raw I/O-expander bit order is un-remapped back to logical relay order.
-    #[allow(dead_code)]
     pub fn read_relay_state(&mut self) -> Result<u16> {
         let raw = self.read_output_reg()?;
         let mut logical: u16 = 0;

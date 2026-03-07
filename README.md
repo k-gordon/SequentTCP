@@ -28,6 +28,7 @@ It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardwa
 | **Holding Registers** (RO) | 10–13 | Industrial Board — 0-10 V Inputs (V × 100) |
 | **Holding Registers** (R/W) | 16–19 | Industrial Board — 0-10 V Outputs (V × 100) |
 | **Holding Registers** (R/W) | 20–23 | Industrial Board — 4-20 mA Outputs (mA × 100) |
+| **Holding Registers** (RO) | 24 | Relay read-back bitmask (diagnostic, updated every `--relay-verify-interval` ticks) |
 
 ## Quick Start
 

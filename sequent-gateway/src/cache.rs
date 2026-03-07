@@ -55,6 +55,25 @@ impl OutputCache {
         }
     }
 
+    /// Build a u16 bitmask of the expected relay state.
+    ///
+    /// Only the first `count` relay bits are included.
+    /// `Some(true)` → bit set, `Some(false)` or `None` → bit clear.
+    pub fn relay_bitmask(&self, count: usize) -> u16 {
+        let mut mask: u16 = 0;
+        for i in 0..count.min(self.relays.len()) {
+            if self.relays[i] == Some(true) {
+                mask |= 1 << i;
+            }
+        }
+        mask
+    }
+
+    /// Returns `true` if relay at `index` has a confirmed (known) state.
+    pub fn has_confirmed_relay(&self, index: usize) -> bool {
+        self.relays.get(index).map_or(false, |s| s.is_some())
+    }
+
     // ── Open-Drain Outputs ───────────────────────────────────────────
 
     /// Returns `true` if the OD output at `index` needs a write.
@@ -210,5 +229,59 @@ mod tests {
         let cache = OutputCache::new();
         assert!(!cache.should_update_v_out(99, 100));
         assert!(!cache.should_update_ma_out(99, 100));
+    }
+
+    #[test]
+    fn relay_bitmask_builds_from_confirmed() {
+        let mut cache = OutputCache::new();
+        cache.confirm_relay(0, true);
+        cache.confirm_relay(2, true);
+        cache.confirm_relay(5, false);
+        // Bit 0 ON, bit 2 ON, bit 5 OFF → 0b0000_0101 = 0x05
+        assert_eq!(cache.relay_bitmask(16), 0x0005);
+    }
+
+    #[test]
+    fn relay_bitmask_respects_count() {
+        let mut cache = OutputCache::new();
+        cache.confirm_relay(0, true);
+        cache.confirm_relay(8, true); // beyond count=8
+        assert_eq!(cache.relay_bitmask(8), 0x0001);
+    }
+
+    #[test]
+    fn has_confirmed_relay_tracks_state() {
+        let mut cache = OutputCache::new();
+        assert!(!cache.has_confirmed_relay(3));
+        cache.confirm_relay(3, true);
+        assert!(cache.has_confirmed_relay(3));
+        cache.invalidate_relay(3);
+        assert!(!cache.has_confirmed_relay(3));
+    }
+
+    #[test]
+    fn mismatch_invalidates_affected_relays() {
+        let mut cache = OutputCache::new();
+        // Confirm relays 0-3
+        for i in 0..4 {
+            cache.confirm_relay(i, i % 2 == 0); // 0=ON, 1=OFF, 2=ON, 3=OFF
+        }
+        assert_eq!(cache.relay_bitmask(4), 0b0101); // bits 0,2 ON
+
+        // Simulate mismatch on relay 0 (expected ON but hardware says OFF)
+        let actual: u16 = 0b0100; // only relay 2 is ON
+        let expected = cache.relay_bitmask(4);
+        let diff = actual ^ expected;
+        for i in 0..4 {
+            if diff & (1 << i) != 0 && cache.has_confirmed_relay(i) {
+                cache.invalidate_relay(i);
+            }
+        }
+        // Relay 0 should be invalidated (was ON, hardware says OFF)
+        assert!(!cache.has_confirmed_relay(0));
+        // Relay 2 should still be confirmed (matches)
+        assert!(cache.has_confirmed_relay(2));
+        // Relay 1 should still be confirmed (both say OFF)
+        assert!(cache.has_confirmed_relay(1));
     }
 }

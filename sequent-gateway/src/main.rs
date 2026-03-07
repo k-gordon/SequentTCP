@@ -228,6 +228,7 @@ async fn main() -> Result<()> {
         let log_interval = args.log_interval;
         let i2c_reset_threshold = args.i2c_reset_threshold;
         let channel_fault_threshold = args.channel_fault_threshold;
+        let relay_verify_interval = args.relay_verify_interval;
 
         std::thread::Builder::new()
             .name("i2c-poll".into())
@@ -246,6 +247,7 @@ async fn main() -> Result<()> {
                     hs,
                     relay_count,
                     use_megaind,
+                    relay_verify_interval,
                 );
             })?
     };
@@ -311,6 +313,7 @@ fn poll_loop(
     health_stats: Arc<HealthStats>,
     relay_count: usize,
     use_megaind: bool,
+    relay_verify_interval: u32,
 ) {
     // ── Initialise hardware ──────────────────────────────────────────
     let mut ind_board = if use_megaind {
@@ -350,6 +353,11 @@ fn poll_loop(
     let mut ch_wd = ChannelWatchdog::new(channel_fault_threshold);
     let mut last_heartbeat = Instant::now();
     let heartbeat_duration = Duration::from_secs(log_interval);
+    let mut tick_count: u32 = 0;
+
+    if relay_verify_interval > 0 {
+        info!("Relay read-back verification enabled (every {relay_verify_interval} ticks)");
+    }
 
     if i2c_reset_threshold > 0 {
         info!("I²C bus recovery enabled (threshold: {i2c_reset_threshold} consecutive failures)");
@@ -539,6 +547,49 @@ fn poll_loop(
                             health_stats.inc_i2c_errors();
                             error!("4-20mA output {} write failed: {e:#}", ch);
                         }
+                    }
+                }
+            }
+        }
+
+        // 3b. RELAY READ-BACK VERIFICATION ────────────────────────────
+        tick_count = tick_count.wrapping_add(1);
+        if relay_verify_interval > 0
+            && relay_count > 0
+            && tick_count % relay_verify_interval == 0
+        {
+            if let Some(ref mut board) = rel_board {
+                match board.read_relay_state() {
+                    Ok(actual) => {
+                        let expected = cache.relay_bitmask(relay_count);
+                        let diff = actual ^ expected;
+                        // Only compare bits where the cache has a confirmed value
+                        let mut effective_diff: u16 = 0;
+                        for i in 0..relay_count {
+                            if diff & (1 << i) != 0 && cache.has_confirmed_relay(i) {
+                                effective_diff |= 1 << i;
+                            }
+                        }
+                        if effective_diff != 0 {
+                            warn!(
+                                "Relay mismatch: expected 0x{expected:04X}, actual 0x{actual:04X} (diff 0x{effective_diff:04X})"
+                            );
+                            health_stats.inc_relay_mismatches();
+                            for i in 0..relay_count {
+                                if effective_diff & (1 << i) != 0 {
+                                    cache.invalidate_relay(i);
+                                }
+                            }
+                        }
+                        // Write read-back bitmask to diagnostic holding register
+                        {
+                            let mut db = data_bank.write().unwrap();
+                            db.holding_registers[databank::HR_RELAY_READBACK] = actual;
+                        }
+                    }
+                    Err(e) => {
+                        health_stats.inc_i2c_errors();
+                        error!("Relay read-back failed: {e:#}");
                     }
                 }
             }
