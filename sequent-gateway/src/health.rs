@@ -70,6 +70,7 @@ impl HealthStats {
     }
 
     /// Increment the cumulative I²C error counter.
+    #[allow(dead_code)]
     pub fn inc_i2c_errors(&self) {
         self.i2c_errors.fetch_add(1, Ordering::Relaxed);
     }

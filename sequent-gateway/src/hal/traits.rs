@@ -17,6 +17,7 @@
 /// Used for runtime introspection — the poll loop and diagnostics can
 /// query a board's capabilities without type-level dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(dead_code)]
 pub enum BoardCapability {
     /// Digital relay outputs (Modbus coils).
     Relays,
@@ -39,6 +40,7 @@ pub enum BoardCapability {
 /// Concrete I/O methods (e.g. `read_4_20ma_inputs`, `set_relay`) remain
 /// on the implementing struct — the trait provides identity and capability
 /// metadata.
+#[allow(dead_code)]
 pub trait SequentBoard: Send {
     /// Human-readable board name (for logging and diagnostics).
     fn name(&self) -> &str;

@@ -230,6 +230,7 @@ impl MegaIndBoard {
     }
 
     /// Return the stack ID (for logging).
+    #[allow(dead_code)]
     pub fn stack_id(&self) -> u8 {
         self.stack_id
     }

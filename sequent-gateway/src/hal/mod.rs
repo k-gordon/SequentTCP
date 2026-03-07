@@ -23,6 +23,7 @@ pub mod megaind {
         _stack_id: u8,
     }
 
+    #[allow(dead_code)]
     impl MegaIndBoard {
         pub fn new(_bus: &str, _stack_id: u8, _def: &BoardDef) -> Result<Self> {
             anyhow::bail!(
@@ -66,6 +67,7 @@ pub mod relay16 {
         _relay_count: usize,
     }
 
+    #[allow(dead_code)]
     impl RelayBoard {
         pub fn new(_bus: &str, _stack_id: u8, _def: &BoardDef) -> Result<Self> {
             anyhow::bail!(
