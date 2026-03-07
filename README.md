@@ -152,18 +152,19 @@ See [ROADMAP.md](ROADMAP.md) for the project history and completed milestones.
 <details>
 <summary>📜 Legacy Python Gateway (deprecated)</summary>
 
-The original proof-of-concept (`modbusTCP.py`) used `pyModbusTCP` and shelled out
+The original proof-of-concept (`legacy/modbusTCP.py`) used `pyModbusTCP` and shelled out
 to Sequent's CLI tools (`megaind`, `16relind`) via `subprocess`. It validated the
 concept but added ~100 ms latency per I/O call and had no analog output support.
 
-The file is retained for historical reference only. **Do not use it for new deployments.**
+The file is retained in the `legacy/` folder for historical reference only.
+**Do not use it for new deployments.**
 
 If you still need it for some reason:
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
 pip install pyModbusTCP
-sudo ./venv/bin/python3 modbusTCP.py
+sudo ./venv/bin/python3 legacy/modbusTCP.py
 ```
 
 </details>
