@@ -1,0 +1,69 @@
+# Board Definition: Sequent PLC-PI08 HAT
+# https://sequentmicrosystems.com
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/plcpi-rpi/blob/main/src/plcpi.h
+#
+# I/O capabilities (identical layout to IO-Plus):
+#   - 8 relays (reg 0x00/0x01/0x02)
+#   - 8 opto-isolated inputs (reg 0x03)
+#   - 4 GPIO (reg 0x04–0x07, direction-configurable)
+#   - 8 ADC inputs (raw at reg 0x08, mV at reg 0x18, 2B LE)
+#   - 4 DAC outputs (reg 0x28, 2B LE, mV)
+#   - 4 OD PWM outputs (reg 0x30, 2B LE, 0–10000)
+#
+# Additional features NOT mapped by the current RegisterMap schema:
+#   - GPIO (4ch, direction configurable, reg 0x04–0x07)
+#   - Opto/GPIO edge counting (reg 0x78+)
+#   - Opto/GPIO encoder counting
+#   - OD pulse counting (reg 0x4A+)
+#   - Per-channel OD PWM frequency (reg 0x5A+)
+#   - 1-Wire bus temperature sensors
+#   - WDT, RTC, RS-485/Modbus
+#
+# NOTE: Same base address (0x28) as IO-Plus HAT.
+#       Cannot be stacked together.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent PLC-PI08 HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x28
+mode = "direct"         # base + stack_id
+
+[channels]
+relays = 8
+opto_inputs = 8
+analog_0_10v_inputs = 8 # 8 ADC inputs (mV at reg 0x18)
+od_outputs = 4
+
+[registers]
+relay_val = 0x00        # Relay output bitmask (read)
+relay_set = 0x01        # Write channel to SET
+relay_clr = 0x02        # Write channel to CLEAR
+opto_in = 0x03          # Opto input bitmask (8ch, read)
+# gpio_val = 0x04       # GPIO value (4ch)
+# gpio_set = 0x05       # GPIO set
+# gpio_clr = 0x06       # GPIO clear
+# gpio_dir = 0x07       # GPIO direction
+# adc_raw = 0x08        # 8ch × 2B LE, raw ADC
+u0_10_in = 0x18         # 8ch × 2B LE, ADC in mV (reg 24)
+u0_10_out = 0x28        # 4ch × 2B LE, DAC in mV (reg 40)
+od_pwm = 0x30           # 4ch × 2B LE, PWM 0-10000 (reg 48)
+# opto_edge_rising = 0x38
+# opto_edge_falling = 0x39
+diag_temperature = 0x3E # CPU temperature (1B, °C)
+diag_5v = 0x3F          # 3.3V rail voltage (2B LE, mV)
+calib_value = 0x41      # Calibration value (2B LE)
+# --- WDT ---
+# wdt_reset = 0x64      # WDT reload (write 0xCA)
+revision_major = 0x78   # Hardware revision major
+revision_minor = 0x79   # Hardware revision minor
+# Note: Firmware version at 0x7A/0x7B
+voltage_scale = 1000.0

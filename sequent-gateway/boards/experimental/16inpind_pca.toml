@@ -1,0 +1,33 @@
+# Board Definition: Sequent 16-Input Industrial HAT (PCA9535 side)
+# https://sequentmicrosystems.com
+#
+# Protocol: PCA9535 I/O expander (digital input reading).
+# I²C address = (base + stack_id) ^ 0x07
+#
+# This is the DIGITAL INPUT SIDE of a dual-protocol board.
+# Some versions of the 16-input industrial board use a Sequent MCU
+# for additional features (counters, edge detection, etc.).
+#
+# Register map derived from:
+#   https://github.com/SequentMicrosystems/16inpind-rpi
+#
+# NOTE: Same base address (0x20) as 16-relay and 16-input.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 16-Input Industrial HAT"
+protocol = "pca9535"
+
+[address]
+base = 0x20
+mode = "xor7"           # (base + stack_id) ^ 0x07
+
+[channels]
+relays = 0
+opto_inputs = 16
+
+[pca9535]
+outport_reg = 0x02
+inport_reg = 0x00
+config_reg = 0x06

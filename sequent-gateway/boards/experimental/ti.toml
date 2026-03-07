@@ -1,0 +1,69 @@
+# Board Definition: Sequent Thermal Interface HAT (TI / Heatweb SQ3)
+# https://sequentmicrosystems.com
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/ti-rpi/blob/main/src/ti.h
+#
+# I/O capabilities:
+#   - 2 relays (reg 0x00/0x01/0x02)
+#   - 8 dry-contact inputs (reg 0x03, with edge counting)
+#   - 4 × 0-10V analog outputs (reg 0x04, 2B LE, mV)
+#   - 8 × 0-10V analog inputs (reg 0x0C, 2B LE, mV)
+#   - 4 open-drain PWM outputs (reg 0x6A, 2B LE)
+#   - 4 LEDs
+#
+# Additional features NOT mapped by the current RegisterMap schema:
+#   - 8 × dedicated thermistor inputs (reg 0x1C, 2B LE, Ω)
+#   - 4 × 1K universal thermistors (reg 0x2C, 2B LE)
+#   - 4 × 10K universal thermistors (reg 0x34, 2B LE)
+#   - Edge counting on dry contacts (reg 0x80, 8ch × 4B)
+#   - PPS (pulses per second) on dry contacts
+#   - PWM input measurement (4ch)
+#   - Battery backup with charge status
+#   - RTC, WDT, RS-485/Modbus
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent Thermal Interface HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x1F
+mode = "direct"         # base + stack_id
+
+[channels]
+relays = 2
+opto_inputs = 8         # Dry-contact inputs
+analog_0_10v_inputs = 8
+od_outputs = 4
+
+[registers]
+relay_val = 0x00        # Relay state bitmask (2 ch, read)
+relay_set = 0x01        # Write channel to SET
+relay_clr = 0x02        # Write channel to CLEAR
+opto_in = 0x03          # Dry-contact input bitmask (8 ch, read)
+u0_10_out = 0x04        # 0-10V output base (4ch × 2B LE, mV)
+u0_10_in = 0x0C         # 0-10V input base (8ch × 2B LE, mV)
+# --- Unmapped registers ---
+# therm = 0x1C          # 8ch × 2B LE, dedicated thermistors (Ω)
+# r_1k = 0x2C           # 4ch × 2B LE, 1K universal thermistors
+# r_10k = 0x34          # 4ch × 2B LE, 10K universal thermistors
+calib_value = 0x3C      # Calibration value (2B LE)
+# modbus_settings = 0x41
+# rtc_year = 0x46
+# wdt_reset = 0x53
+# edge_rising_enable = 0x67
+# edge_falling_enable = 0x68
+od_pwm = 0x6A           # OD PWM output base (4ch × 2B LE)
+diag_temperature = 0x72 # CPU temperature (1B, °C)
+diag_24v = 0x73         # 12V rail voltage (2B LE, mV)
+diag_5v = 0x75          # Battery voltage (2B LE, mV)
+# power_state = 0x77    # 0=charging, 1=charged, 3=fault, 4=Vin off
+revision_major = 0x78   # Hardware revision major
+revision_minor = 0x79   # Hardware revision minor
+# Note: Firmware version at 0x7A/0x7B
+voltage_scale = 1000.0

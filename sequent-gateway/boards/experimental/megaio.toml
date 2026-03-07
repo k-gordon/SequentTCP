@@ -1,0 +1,63 @@
+# Board Definition: Sequent Mega-IO HAT
+# https://sequentmicrosystems.com/products/mega-io-stackable-card-for-raspberry-pi
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/megaio-rpi
+#
+# I/O capabilities:
+#   - 8 relays (reg 0x00/0x01/0x02)
+#   - 8 opto-isolated inputs (reg 0x03)
+#   - 4 open-collector outputs (reg 0x04/0x05/0x06)
+#   - 8 ADC inputs (12-bit raw, reg 0x07, 2B each)
+#   - 1 DAC output (split H/L byte at reg 0x17/0x18)
+#   - 6 GPIO (reg 0x19, direction at 0x1C)
+#
+# NOTE: The ADC on this board returns raw 12-bit values (0-4095),
+#       NOT millivolt-scaled 0-10V readings.  The voltage_scale
+#       may need adjustment depending on the reference voltage.
+#
+# NOTE: The DAC uses a split high-byte/low-byte format unlike
+#       newer boards that use 2B LE words.
+#
+# Additional features NOT mapped by the current RegisterMap schema:
+#   - Open-collector outputs (4ch at reg 0x04-0x06)
+#   - GPIO (6ch at reg 0x19-0x1C)
+#   - Opto/GPIO interrupt edge configuration
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent Mega-IO HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x31
+mode = "direct"         # base + stack_id
+
+[channels]
+relays = 8
+opto_inputs = 8
+od_outputs = 4          # Open-collector outputs
+
+[registers]
+relay_val = 0x00        # Relay state bitmask (8 ch, read)
+relay_set = 0x01        # Write channel to SET
+relay_clr = 0x02        # Write channel to CLEAR
+opto_in = 0x03          # Opto input bitmask (8 ch, read)
+# oc_out_val = 0x04     # Open-collector output state
+# oc_out_set = 0x05     # OC set
+# oc_out_clr = 0x06     # OC clear
+u0_10_in = 0x07         # ADC input base (8ch × 2B, 12-bit raw)
+# dac_val_h = 0x17      # DAC output high byte (1ch)
+# dac_val_l = 0x18      # DAC output low byte (1ch)
+# gpio_val = 0x19       # GPIO state (6 ch)
+# gpio_set = 0x1A       # GPIO set
+# gpio_clr = 0x1B       # GPIO clear
+# gpio_dir = 0x1C       # GPIO direction (0=out, 1=in)
+revision_major = 0x3C   # Hardware revision major
+revision_minor = 0x3D   # Hardware revision minor
+# Note: Firmware version at 0x3E/0x3F
+voltage_scale = 1.0     # Raw 12-bit ADC counts (not mV-scaled)

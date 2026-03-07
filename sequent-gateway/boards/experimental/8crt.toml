@@ -1,0 +1,55 @@
+# Board Definition: Sequent 8-Current Transducer HAT
+# https://sequentmicrosystems.com/products/eight-current-transducers-daq-8-layer-stackable-hat-for-raspberry-pi
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/8crt-rpi
+#
+# I/O capabilities:
+#   - 8 current transducer inputs (signed int16, value ÷ 100 = Amps)
+#   - 8 current RMS readings (unsigned int16, value ÷ 100 = Amps)
+#   - 8 LEDs
+#
+# This board measures AC/DC current via external CT clamps or hall-effect
+# sensors.  The current RegisterMap schema does not have fields for
+# current transducer registers; they are noted in comments.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 8-Current Transducer HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x19
+mode = "direct"         # base + stack_id
+
+[channels]
+# No standard relay/opto/analog channels — current sensing only
+# 8 current transducer channels are NOT yet representable in the config
+
+[registers]
+# led_val = 0x00        # LED bitmask (8 ch)
+# led_set = 0x01        # LED set
+# led_clr = 0x02        # LED clear
+# --- Current transducer registers (NOT mapped by current schema) ---
+# crt_in_val = 0x03     # 8ch × 2B int16, instantaneous current (÷100 = A)
+# crt_in_rms = 0x13     # 8ch × 2B uint16, RMS current (÷100 = A)
+# crt_range = 0x23      # 8ch × 2B, sensor full-scale range (A)
+# crt_type = 0x33       # Sensor type bitmap (CT vs hall-effect)
+calib_value = 0x34      # Calibration value (4B float)
+# calib_channel = 0x38  # Calibration channel
+# calib_key = 0x39      # Calibration key (write 0xAA)
+# --- RTC ---
+# rtc_year = 0x3B       # RTC year
+# --- WDT ---
+# wdt_reset = 0x48      # WDT reload (write 0xCA)
+# wdt_interval = 0x49   # WDT period (2B LE)
+# button = 0x5C         # Pushbutton state
+diag_5v = 0x5D          # Raspberry Pi voltage (2B LE, mV)
+revision_major = 0xFA   # Hardware revision major (250)
+revision_minor = 0xFB   # Hardware revision minor
+# Note: Firmware version at 0xFC/0xFD
+voltage_scale = 1000.0

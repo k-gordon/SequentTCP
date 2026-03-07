@@ -1,0 +1,65 @@
+# Board Definition: Sequent 4-Relay 4-Input HAT
+# https://sequentmicrosystems.com/collections/all-io-cards/products/4-relays-4-inputs-card
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/4rel4in-rpi/blob/main/src/4rel4in.h
+#
+# I/O capabilities:
+#   - 4 relays (reg 0/1/2)
+#   - 4 digital inputs (reg 3)
+#   - 4 AC-filtered inputs (reg 4)
+#   - 4 LEDs (reg 5/6/7, with mode at reg 8)
+#
+# Additional features NOT mapped by the current RegisterMap schema:
+#   - AC-filtered input register (reg 4)
+#   - LED control (val/set/clr at regs 5/6/7, mode at 8)
+#   - Edge counting / pulse counting (reg 13+)
+#   - Encoder counting (reg 37+)
+#   - PPS (pulses per second, reg 29+)
+#   - PWM input fill factor (reg 45+)
+#   - Input frequency measurement (reg 53+)
+#   - Current sensing (reg 72+, HW v10+ only)
+#   - Thermistor resistance/temperature
+#   - Failsafe relay state
+#   - Watchdog timer
+#   - RS-485 / Modbus passthrough
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 4-Relay 4-Input HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x0E
+mode = "direct"         # base + stack_id
+
+[channels]
+relays = 4
+opto_inputs = 4         # Digital inputs (dry-contact / optocoupled)
+
+[registers]
+relay_val = 0x00        # Relay output bitmask (read)
+relay_set = 0x01        # Write channel number to SET
+relay_clr = 0x02        # Write channel number to CLEAR
+opto_in = 0x03          # Digital input bitmask (read)
+# ac_in = 0x04          # AC-filtered input bitmask
+# led_val = 0x05        # LED output bitmask
+# led_set = 0x06        # LED set
+# led_clr = 0x07        # LED clear
+# led_mode = 0x08       # LED mode
+# edge_enable = 0x09    # Edge detection enable mask
+# enc_enable = 0x0A     # Encoder enable mask
+# scan_freq = 0x0B      # Scan frequency (2B LE)
+# pulse_count = 0x0D    # Pulse count start (4ch × 4B)
+# pps = 0x1D            # Pulses per second (4ch × 2B)
+# enc_count = 0x25      # Encoder count (2ch × 4B)
+# pwm_fill = 0x2D       # PWM fill factor (4ch × 2B)
+# in_freq = 0x35        # Input frequency (4ch × 2B)
+calib_value = 0x58      # Calibration register (reg 88)
+revision_major = 0x78   # Hardware revision major
+revision_minor = 0x79   # Hardware revision minor
+# Note: Firmware version is at 0x7A/0x7B on this board

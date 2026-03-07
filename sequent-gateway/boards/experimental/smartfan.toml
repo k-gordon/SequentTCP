@@ -1,0 +1,45 @@
+# Board Definition: Sequent Smart Fan HAT
+# https://sequentmicrosystems.com/products/smart-fan-hat
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id (stack 0–1 only).
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/SmartFan-rpi/blob/main/src/fan.h
+#
+# This is a simple fan controller — not a general-purpose I/O board.
+# Capabilities:
+#   - 1 fan PWM output (0–100%)
+#   - 1 internal temperature sensor
+#   - 1 pushbutton
+#   - 1 LED (blink control)
+#   - Temperature safety cutoff
+#
+# Very limited I/O — primarily useful for monitoring fan/temperature status.
+#
+# NOTE: HW v4 "without CPU" uses base address 0x2C instead of 0x03.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent Smart Fan HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x03
+mode = "direct"         # base + stack_id (only 0–1)
+
+[channels]
+# No standard relay/opto/analog channels — fan controller only
+
+[registers]
+# fan_power = 0x00      # Fan power [0-100] %
+# blink_off = 0x01      # LED blink disable
+diag_temperature = 0x02 # Internal CPU temp (1B, °C)
+# temp_full_scale = 0x03
+# temp_safety = 0x04    # Safety threshold [30-80] °C
+# time_to_stop = 0x05   # Run-then-stop timer (2B LE, seconds)
+# button_state = 0x09   # Button state
+revision_major = 0x64   # Hardware revision major (100)
+revision_minor = 0x65   # Hardware revision minor
+# Note: Firmware version at 0x66/0x67

@@ -1,0 +1,32 @@
+# Board Definition: Sequent 4-Relay Industrial HAT (PCA9535 side)
+# https://sequentmicrosystems.com/collections/all-io-cards/products/four-relays-four-inputs-for-raspberry-pi
+#
+# Protocol: PCA9535 I/O expander (relay control only).
+# I²C address = (base + stack_id) ^ 0x07
+#
+# This is the RELAY SIDE of a dual-protocol board.
+# The analog/input side uses a Sequent MCU at base 0x0E — see 4relind_mcu.toml.
+#
+# Register map derived from:
+#   https://github.com/SequentMicrosystems/4relind-rpi
+#
+# NOTE: Same base address (0x38) as 8-relay, 4-relay, 8-mosfet, 8-relay-hv.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 4-Relay Industrial HAT (relays)"
+protocol = "pca9535"
+
+[address]
+base = 0x38
+mode = "xor7"           # (base + stack_id) ^ 0x07
+
+[channels]
+relays = 4
+relay_remap = [3, 2, 1, 0]
+
+[pca9535]
+outport_reg = 0x02
+inport_reg = 0x00
+config_reg = 0x06

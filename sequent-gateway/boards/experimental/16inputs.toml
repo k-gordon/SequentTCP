@@ -1,0 +1,34 @@
+# Board Definition: Sequent 16-Digital-Input HAT
+# https://sequentmicrosystems.com/products/16-universal-inputs-card-for-raspberry-pi
+#
+# Protocol: PCA9535 I/O expander (read-only — all pins configured as inputs).
+# I²C address = (base + stack_id) ^ 0x07
+#
+# Register map derived from:
+#   https://github.com/SequentMicrosystems/16inputs-rpi
+#
+# NOTE: Same base address (0x20) as the 16-relay HAT.
+#       Only ONE board type per address range can be stacked.
+#
+# Gateway behaviour: all 16 pins are inputs; there are no relay outputs.
+# The gateway reads the inport register and exposes the 16 bits as
+# opto-isolated inputs in the Modbus holding registers.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 16-Digital-Input HAT"
+protocol = "pca9535"
+
+[address]
+base = 0x20
+mode = "xor7"           # (base + stack_id) ^ 0x07
+
+[channels]
+relays = 0
+opto_inputs = 16
+
+[pca9535]
+outport_reg = 0x02      # Not used for this board (all inputs)
+inport_reg = 0x00       # Input Port register (read, 2B LE)
+config_reg = 0x06       # Config register — all bits set to 1 (input)

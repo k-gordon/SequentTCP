@@ -1,0 +1,57 @@
+# Board Definition: Sequent 24-Bit 8-Voltage-Input HAT (24b8vin)
+# https://sequentmicrosystems.com
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/24b8vin-rpi/blob/main/src/data.h
+#
+# I/O capabilities:
+#   - 8 × 24-bit high-precision analog inputs (float32, volts)
+#   - Configurable gain per channel (±24V down to ±0.18V range)
+#   - Configurable sample rate (250–8000 SPS)
+#   - 8 LEDs
+#
+# This is a precision DAQ board — no relays, digital inputs, or outputs.
+# The voltage inputs use 32-bit float registers, which the current
+# RegisterMap schema does not support (it expects 16-bit LE words).
+#
+# NOTE: Same base address (0x31) as the Mega-IO HAT.
+#       Cannot be stacked together.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 24-Bit 8-Voltage-Input HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x31
+mode = "direct"         # base + stack_id
+
+[channels]
+# 8 analog inputs — but they use float32 registers, not 2B LE mV
+# Cannot be mapped to analog_0_10v_inputs without schema changes
+
+[registers]
+# led_val = 0x00        # LED bitmask (8ch)
+# led_set = 0x01        # Set LED
+# led_clr = 0x02        # Clear LED
+# --- 24-bit ADC registers (float32, NOT mapped) ---
+# u_in_val = 0x03       # 8ch × 4B float32, voltage in V
+# gain = 0x23           # 8ch × 1B, gain code [0-7]
+# sr_sel = 0x2B         # Sample rate code [0-5]
+diag_temperature = 0x2C # CPU temperature (1B, °C)
+diag_5v = 0x2D          # Raspberry Pi supply voltage (2B LE, mV)
+# --- RTC registers ---
+# rtc_year = 0x30       # RTC (6B: Y/M/D/H/Min/S)
+# --- WDT registers ---
+# wdt_reset = 0x3D      # WDT reload (write 0xCA)
+calib_value = 0x57      # Calibration value (4B float)
+# calib_channel = 0x5B  # Calibration channel
+# calib_key = 0x5C      # Calibration key (0xAA/0x55)
+revision_major = 0xFB   # Hardware revision major (251)
+revision_minor = 0xFC   # Hardware revision minor
+# Note: Firmware version at 0xFD/0xFE
+voltage_scale = 1000.0

@@ -436,4 +436,54 @@ config_reg = 0x06
         assert_eq!(def.channels.relay_remap.as_ref().unwrap().len(), 8);
         assert!(def.pca9535.is_some());
     }
+
+    // ── Experimental board TOML parse tests ─────────────────────────────
+    // Verify every experimental TOML file deserializes without error.
+
+    macro_rules! experimental_parse_test {
+        ($name:ident, $file:expr, $board_name:expr, $proto:expr) => {
+            #[test]
+            fn $name() {
+                let toml_str = include_str!(concat!("../boards/experimental/", $file));
+                let def: BoardDef = toml::from_str(toml_str)
+                    .unwrap_or_else(|e| panic!("failed to parse {}: {}", $file, e));
+                assert_eq!(def.board.name, $board_name);
+                assert_eq!(def.board.protocol, $proto);
+            }
+        };
+    }
+
+    // PCA9535 boards
+    experimental_parse_test!(exp_4relay,       "4relay.toml",       "Sequent 4-Relay HAT",                        "pca9535");
+    experimental_parse_test!(exp_8mosfet,      "8mosfet.toml",      "Sequent 8-MOSFET HAT (relay outputs)",       "pca9535");
+    experimental_parse_test!(exp_8relayhv,     "8relayhv.toml",     "Sequent 8-Relay HV HAT",                     "pca9535");
+    experimental_parse_test!(exp_16inputs,     "16inputs.toml",     "Sequent 16-Digital-Input HAT",                "pca9535");
+    experimental_parse_test!(exp_4relind_pca,  "4relind_pca.toml",  "Sequent 4-Relay Industrial HAT (relays)",     "pca9535");
+    experimental_parse_test!(exp_8inputs_pca,  "8inputs_pca.toml",  "Sequent 8-Input HAT (digital inputs)",        "pca9535");
+    experimental_parse_test!(exp_16inpind_pca, "16inpind_pca.toml", "Sequent 16-Input Industrial HAT",             "pca9535");
+
+    // Sequent MCU boards
+    experimental_parse_test!(exp_megabas,      "megabas.toml",      "Sequent Building Automation HAT (MegaBAS)",   "sequent_mcu");
+    experimental_parse_test!(exp_ioplus,       "ioplus.toml",       "Sequent IO-Plus HAT",                         "sequent_mcu");
+    experimental_parse_test!(exp_4rel4in,      "4rel4in.toml",      "Sequent 4-Relay 4-Input HAT",                 "sequent_mcu");
+    experimental_parse_test!(exp_rtd,          "rtd.toml",          "Sequent RTD Data Acquisition HAT",            "sequent_mcu");
+    experimental_parse_test!(exp_smtc,         "smtc.toml",         "Sequent 8-Thermocouple HAT",                  "sequent_mcu");
+    experimental_parse_test!(exp_multiio,      "multiio.toml",      "Sequent Multi-IO HAT",                        "sequent_mcu");
+    experimental_parse_test!(exp_16uout,       "16uout.toml",       "Sequent 16 Analog 0-10V Output HAT",          "sequent_mcu");
+    experimental_parse_test!(exp_16univin,     "16univin.toml",     "Sequent 16 Universal Input HAT",              "sequent_mcu");
+    experimental_parse_test!(exp_megaio,       "megaio.toml",       "Sequent Mega-IO HAT",                         "sequent_mcu");
+    experimental_parse_test!(exp_megaioind,    "megaioind.toml",    "Sequent MegaIO Industrial HAT",               "sequent_mcu");
+    experimental_parse_test!(exp_3relind,      "3relind.toml",      "Sequent 3-Relay Industrial HAT",              "sequent_mcu");
+    experimental_parse_test!(exp_wdt,          "wdt.toml",          "Sequent Watchdog Timer HAT",                  "sequent_mcu");
+    experimental_parse_test!(exp_8crt,         "8crt.toml",         "Sequent 8-Current Transducer HAT",            "sequent_mcu");
+    experimental_parse_test!(exp_4relind_mcu,  "4relind_mcu.toml",  "Sequent 4-Relay Industrial HAT (analog)",     "sequent_mcu");
+    experimental_parse_test!(exp_8mosind_mcu,  "8mosind_mcu.toml",  "Sequent 8-MOSFET Industrial HAT (analog)",    "sequent_mcu");
+    experimental_parse_test!(exp_8inputs_mcu,  "8inputs_mcu.toml",  "Sequent 8-Input HAT (analog)",                "sequent_mcu");
+    experimental_parse_test!(exp_24b8vin,      "24b8vin.toml",      "Sequent 24-Bit 8-Voltage-Input HAT",          "sequent_mcu");
+    experimental_parse_test!(exp_ti,           "ti.toml",           "Sequent Thermal Interface HAT",               "sequent_mcu");
+    experimental_parse_test!(exp_smartfan,     "smartfan.toml",     "Sequent Smart Fan HAT",                       "sequent_mcu");
+    experimental_parse_test!(exp_plcpi,        "plcpi.toml",        "Sequent PLC-PI08 HAT",                        "sequent_mcu");
+    experimental_parse_test!(exp_fsrc,         "fsrc.toml",         "Sequent FSRC Controller HAT",                 "sequent_mcu");
+    experimental_parse_test!(exp_lkit,         "lkit.toml",         "Sequent Learning Kit HAT",                    "sequent_mcu");
+    experimental_parse_test!(exp_dash,         "dash.toml",         "Sequent Dashboard Controller HAT",            "sequent_mcu");
 }

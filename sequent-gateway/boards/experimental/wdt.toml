@@ -1,0 +1,51 @@
+# Board Definition: Sequent Watchdog Timer HAT (WDT / Super-WDT)
+# https://sequentmicrosystems.com/products/raspberry-pi-watchdog-timer
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/wdt-rpi
+#
+# This is a dedicated watchdog/power management board.
+# Two variants exist:
+#   - Simple WDT: watchdog timer only
+#   - Super-WDT: adds battery charger, RTC, power button
+#
+# No relay/analog I/O — primarily for system monitoring.
+# The diagnostic registers are useful for monitoring power supply health.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent Watchdog Timer HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x30
+mode = "direct"         # base + stack_id
+
+[channels]
+# No standard I/O channels — watchdog/power management only
+
+[registers]
+# --- Watchdog registers ---
+# wdt_reload = 0x00     # WDT reload (write 0xCA to pet)
+# wdt_interval_set = 0x01  # WDT period set (2B LE, seconds)
+# wdt_interval_get = 0x03  # WDT period get (2B LE)
+# wdt_init_interval = 0x05 # Default WDT period (2B LE)
+# wdt_reset_count = 0x09   # Number of resets (2B LE)
+diag_5v = 0x0C          # Input voltage (2B LE, mV) — 5V_IN register
+# --- Power management ---
+# power_off_interval = 0x0E  # Scheduled power off (4B LE, seconds)
+# --- Super-WDT only ---
+# vbat = 0x16           # Battery voltage (2B LE, mV)
+# rasp_v = 0x18         # Raspberry Pi voltage (2B LE, mV)
+diag_temperature = 0x1A # Temperature (1B, °C) — Super-WDT only
+# charge_stat = 0x1B    # Charge status
+# --- RTC (Super-WDT only) ---
+# rtc_year = 0x1F       # RTC year (1B)
+revision_major = 0x2C   # Hardware revision major
+revision_minor = 0x2D   # Hardware revision minor
+# Note: Firmware version at 0x2E/0x2F
+voltage_scale = 1000.0

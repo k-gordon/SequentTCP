@@ -1,0 +1,57 @@
+# Board Definition: Sequent Learning Kit HAT
+# https://sequentmicrosystems.com
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/lkit-rpi/blob/main/src/lkit.h
+#
+# I/O capabilities:
+#   - 1 × 0-10V analog output (reg 0x12, 2B LE, mV)
+#   - 1 × 0-10V analog input (reg 0x0A, 2B LE, mV)
+#   - 1 × 4-20mA analog output (reg 0x10, 2B LE)
+#   - 1 × 4-20mA analog input (reg 0x0C, 2B LE)
+#   - 5 raw ADC channels (reg 0x00, 2B LE)
+#   - 1 DC motor output (reg 0x14, 2B LE)
+#   - 2 servo outputs (reg 0x1A/0x1C, 2B LE)
+#   - LEDs
+#
+# This is an educational board with small channel counts.
+# Motor and servo outputs are not mapped by the current schema.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent Learning Kit HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x05
+mode = "direct"         # base + stack_id
+
+[channels]
+analog_0_10v_inputs = 1
+analog_4_20ma_inputs = 1
+
+[registers]
+# adc_raw = 0x00        # 5ch × 2B LE, raw ADC
+u0_10_in = 0x0A         # 1ch × 2B LE, voltage input (mV)
+i4_20_in = 0x0C         # 1ch × 2B LE, current input (µA)
+# i4_20_out_read = 0x0E # Current output readback
+i4_20_out = 0x10        # 1ch × 2B LE, current output set
+u0_10_out = 0x12        # 1ch × 2B LE, voltage output (mV)
+# motor_val = 0x14      # DC motor value (2B LE)
+# led_set = 0x16        # LED set
+# led_clr = 0x17        # LED clear
+# led_val = 0x18        # LED state
+# servo_enable = 0x19   # Servo enable
+# servo_val1 = 0x1A     # Servo 1 position (2B LE)
+# servo_val2 = 0x1C     # Servo 2 position (2B LE)
+diag_temperature = 0x64 # CPU temperature (1B, °C) — at 100
+diag_5v = 0x65          # 3.3V rail voltage (2B LE, mV)
+calib_value = 0x67      # Calibration value (2B LE)
+revision_major = 0x78   # Hardware revision major
+revision_minor = 0x79   # Hardware revision minor
+# Note: Firmware version at 0x7A/0x7B
+voltage_scale = 1000.0

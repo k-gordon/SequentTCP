@@ -1,0 +1,38 @@
+# Board Definition: Sequent 3-Relay Industrial HAT
+# https://sequentmicrosystems.com/products/three-relays-stackable-card-for-raspberry-pi
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/3relind-rpi
+#
+# I/O capabilities:
+#   - 3 relays (reg 0x00/0x01/0x02)
+#
+# This is a simple relay-only board — no analog or digital inputs.
+# Has Modbus/RS-485 passthrough registers (0x06+).
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 3-Relay Industrial HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x60
+mode = "direct"         # base + stack_id
+
+[channels]
+relays = 3
+
+[registers]
+relay_val = 0x00        # Relay state bitmask (3 ch, read)
+relay_set = 0x01        # Write channel to SET
+relay_clr = 0x02        # Write channel to CLEAR
+diag_5v = 0x03          # 3.3V rail voltage (2B LE, mV)
+diag_temperature = 0x05 # Board temperature (1B, °C)
+# modbus_settings = 0x06  # Modbus config (4B)
+# modbus_id_offset = 0x0A # Modbus address offset
+revision_major = 0x78   # Firmware revision major
+revision_minor = 0x79   # Firmware revision minor

@@ -1,0 +1,30 @@
+# Board Definition: Sequent 4-Relay HAT
+# https://sequentmicrosystems.com/collections/all-io-cards/products/four-relays-four-inputs-for-raspberry-pi
+#
+# Protocol: PCA9535 I/O expander.
+# I²C address = (base + stack_id) ^ 0x07
+#
+# Register map derived from:
+#   https://github.com/SequentMicrosystems/4relay-rpi
+#
+# NOTE: Same base address (0x38) as 8-relay, 8-mosfet, and 8-relay-hv.
+#       Only ONE board type per address range can be stacked.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 4-Relay HAT"
+protocol = "pca9535"
+
+[address]
+base = 0x38
+mode = "xor7"           # (base + stack_id) ^ 0x07
+
+[channels]
+relays = 4
+relay_remap = [3, 2, 1, 0]
+
+[pca9535]
+outport_reg = 0x02
+inport_reg = 0x00
+config_reg = 0x06

@@ -1,0 +1,61 @@
+# Board Definition: Sequent IO-Plus HAT
+# https://sequentmicrosystems.com/products/io-plus-stackable-card-for-raspberry-pi
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/ioplus-rpi/blob/master/python/ioplus/ioplus.py
+#
+# I/O capabilities:
+#   - 8 relays (reg 0/1/2)
+#   - 8 opto-isolated inputs (reg 3)
+#   - 4 GPIO (reg 4-7, direction-configurable)
+#   - 8 ADC inputs (raw at reg 8, mV at reg 24, 2B LE each)
+#   - 4 DAC outputs (reg 40, 2B LE, mV)
+#   - 4 open-drain PWM outputs (reg 48, 2B LE, 0-10000 = 0-100.00%)
+#
+# Additional features NOT mapped by the current RegisterMap schema:
+#   - 4 × GPIO (digital I/O with direction config, reg 4-7)
+#   - Opto edge counting (rising reg 56, falling reg 57)
+#   - Per-channel OD PWM frequency setting
+#   - 1-Wire bus (OWB) temperature sensors
+#   - Watchdog timer
+#   - RS-485 / Modbus passthrough
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent IO-Plus HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x28
+mode = "direct"         # base + stack_id
+
+[channels]
+relays = 8
+opto_inputs = 8
+analog_0_10v_inputs = 8 # 8 ADC channels (0-3.3V, returned as mV)
+od_outputs = 4
+
+[registers]
+relay_val = 0x00        # Relay output bitmask (read)
+relay_set = 0x01        # Write channel number to SET
+relay_clr = 0x02        # Write channel number to CLEAR
+opto_in = 0x03          # Opto input bitmask (read)
+# --- GPIO at regs 4-7 (not mapped) ---
+# adc_raw = 0x08        # 8ch × 2B LE, raw ADC counts
+u0_10_in = 0x18         # 8ch × 2B LE, ADC in millivolts (reg 24 = 0x18)
+u0_10_out = 0x28        # 4ch × 2B LE, DAC in millivolts (reg 40 = 0x28)
+od_pwm = 0x30           # 4ch × 2B LE, 0-10000 (reg 48 = 0x30)
+# --- Unmapped registers ---
+# opto_rising_edge = 0x38   # Opto edge count rising (reg 56)
+# opto_falling_edge = 0x39  # Opto edge count falling (reg 57)
+diag_temperature = 0x3E # CPU temperature (1B, °C) — reg 62
+diag_5v = 0x3F          # 3.3V rail voltage (2B LE, mV) — reg 63
+# calib = 0x41          # Calibration register (reg 65)
+revision_major = 0x78   # Hardware revision major (reg 120)
+revision_minor = 0x79   # Hardware revision minor
+# Note: Firmware version is at 0x7A/0x7B on this board
+voltage_scale = 1000.0  # mV → V

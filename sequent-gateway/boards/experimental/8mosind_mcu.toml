@@ -1,0 +1,36 @@
+# Board Definition: Sequent 8-MOSFET Industrial HAT (MCU side)
+# https://sequentmicrosystems.com/products/eight-mosfets-8-layer-stackable-hat-for-raspberry-pi
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# This is the ANALOG/INPUT SIDE of a dual-protocol board.
+# The MOSFET relay side uses a PCA9535 at base 0x38 — see 8mosfet.toml.
+#
+# Register map derived from:
+#   https://github.com/SequentMicrosystems/8mosind-rpi
+#
+# The MCU side provides:
+#   - Analog inputs (0-10V, current sensing)
+#   - Diagnostic registers
+#
+# NOTE: Register addresses are approximate — verify against source.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 8-MOSFET Industrial HAT (analog)"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x38
+mode = "direct"         # base + stack_id (different instance from PCA side)
+
+[channels]
+# Channel counts need hardware verification
+
+[registers]
+# Register layout needs verification against 8mosind source
+revision_major = 0x78
+revision_minor = 0x79
+voltage_scale = 1000.0

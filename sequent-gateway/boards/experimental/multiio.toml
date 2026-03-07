@@ -1,0 +1,71 @@
+# Board Definition: Sequent Multi-IO HAT
+# https://sequentmicrosystems.com/products/multi-io-stackable-hat-for-raspberry-pi
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/multiio-rpi
+#
+# I/O capabilities:
+#   - 2 relays (reg 0x00/0x01/0x02)
+#   - 6 LEDs (reg 0x03/0x04/0x05)
+#   - 4 opto-isolated inputs (reg 0x06)
+#   - 2 × 0-10V analog inputs (reg 0x08, 2B LE)
+#   - 2 × 4-20mA analog inputs (reg 0x0C, 2B LE)
+#   - 2 × 0-10V analog outputs (reg 0x10, 2B LE)
+#   - 2 × 4-20mA analog outputs (reg 0x14, 2B LE)
+#   - 1 DC motor PWM output (reg 0x18, 2B LE)
+#   - 2 servo outputs (reg 0x1A/0x1C, 2B LE)
+#   - 2 RTD inputs (float at reg 0x1E/0x26)
+#
+# Additional features NOT mapped by the current RegisterMap schema:
+#   - LED control (6 LEDs at reg 0x03-0x05)
+#   - Motor PWM output (reg 0x18)
+#   - Servo outputs (reg 0x1A/0x1C)
+#   - RTD temperature/resistance (4B float at reg 0x1E-0x2D)
+#   - Pushbutton state (reg 0xFF)
+#   - Watchdog timer
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent Multi-IO HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x06
+mode = "direct"         # base + stack_id
+
+[channels]
+relays = 2
+opto_inputs = 4
+analog_0_10v_inputs = 2
+analog_4_20ma_inputs = 2
+od_outputs = 0
+
+[registers]
+relay_val = 0x00        # Relay state bitmask (2 ch, read)
+relay_set = 0x01        # Write channel to SET
+relay_clr = 0x02        # Write channel to CLEAR
+# led_val = 0x03        # LED state (6 ch)
+# led_set = 0x04        # LED set
+# led_clr = 0x05        # LED clear
+opto_in = 0x06          # Opto input bitmask (4 ch, read)
+u0_10_in = 0x08         # 0-10V input base (2ch × 2B LE, mV)
+i4_20_in = 0x0C         # 4-20mA input base (2ch × 2B LE)
+u0_10_out = 0x10        # 0-10V output base (2ch × 2B LE, mV)
+i4_20_out = 0x14        # 4-20mA output base (2ch × 2B LE)
+# motor_pwm = 0x18      # DC motor PWM (1ch × 2B LE)
+# servo1 = 0x1A         # Servo 1 position (2B LE)
+# servo2 = 0x1C         # Servo 2 position (2B LE)
+# rtd_temp1 = 0x1E      # RTD 1 temperature (4B float)
+# rtd_temp2 = 0x22      # RTD 2 temperature (4B float)
+# rtd_res1 = 0x26       # RTD 1 resistance (4B float)
+# rtd_res2 = 0x2A       # RTD 2 resistance (4B float)
+diag_temperature = 0x2E # Board temperature (1B, °C)
+diag_5v = 0x2F          # 3.3V rail voltage (2B LE, mV)
+revision_major = 0x78   # Hardware revision major
+revision_minor = 0x79   # Hardware revision minor
+# Note: Firmware version at 0x7A/0x7B
+voltage_scale = 1000.0

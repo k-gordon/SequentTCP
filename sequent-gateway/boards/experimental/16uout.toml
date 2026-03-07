@@ -1,0 +1,43 @@
+# Board Definition: Sequent 16 Analog 0-10V Output HAT
+# https://sequentmicrosystems.com/products/sixteen-0-10v-outputs-stackable-hat-for-raspberry-pi
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/16uout-rpi
+#
+# I/O capabilities:
+#   - 16 × 0-10V analog outputs (DAC, reg 0x04, 2B LE, mV)
+#   - 16 LEDs (reg 0x00, 2B bitmask)
+#
+# This is a pure output board — no relays, digital inputs, or analog inputs.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 16 Analog 0-10V Output HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x72
+mode = "direct"         # base + stack_id
+
+[channels]
+analog_0_10v_inputs = 0
+od_outputs = 0
+
+[registers]
+# led_val = 0x00        # LED bitmask (16 ch, 2B LE)
+# led_set = 0x02        # LED set (1B, channel number)
+# led_clr = 0x03        # LED clear (1B, channel number)
+u0_10_out = 0x04        # 0-10V output base (16ch × 2B LE, mV)
+calib_value = 0x25      # Calibration value (4B float)
+# calib_channel = 0x29  # Calibration channel select
+diag_temperature = 0x45 # Board temperature (1B, °C)
+diag_24v = 0x46         # 24V rail voltage (2B LE, mV)
+diag_5v = 0x48          # 5V rail voltage (2B LE, mV)
+revision_major = 0xFA   # Hardware revision major (250)
+revision_minor = 0xFB   # Hardware revision minor
+# Note: Firmware version at 0xFC/0xFD
+voltage_scale = 1000.0

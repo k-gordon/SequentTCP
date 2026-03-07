@@ -1,0 +1,55 @@
+# Board Definition: Sequent 16 Universal Input HAT
+# https://sequentmicrosystems.com/products/16-universal-inputs-card-for-raspberry-pi
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/16univin-rpi
+#
+# I/O capabilities:
+#   - 16 digital dry-contact inputs (reg 0x04, 2B bitmask)
+#   - 16 × 0-10V analog inputs (reg 0x06, 2B LE, mV)
+#   - 16 LEDs (reg 0x00, 2B bitmask)
+#
+# Input type per channel is configurable (4 bits per channel):
+#   0 = 0-10V, 1 = 1K thermistor, 2 = 10K thermistor,
+#   3 = 4-20mA, 4 = 0-3.3V
+#
+# Additional features NOT mapped by the current RegisterMap schema:
+#   - 1K thermistor readings (16ch at reg 0x26, 2B LE, Ω)
+#   - 10K thermistor readings (16ch at reg 0x46, 2B LE, Ω)
+#   - Input type selection (4 bits per channel)
+#   - Edge counting (16ch × 4B at reg 0x6A)
+#   - Counter enable/reset
+#   - Watchdog timer
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 16 Universal Input HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x58
+mode = "direct"         # base + stack_id
+
+[channels]
+opto_inputs = 16        # Dry-contact digital inputs
+analog_0_10v_inputs = 16
+
+[registers]
+# led_val = 0x00        # LED bitmask (16ch, 2B LE)
+# led_set = 0x02        # LED set
+# led_clr = 0x03        # LED clear
+opto_in = 0x04          # Dry-contact input bitmask (16ch, 2B LE)
+u0_10_in = 0x06         # 0-10V input base (16ch × 2B LE, mV)
+# r_1k = 0x26           # 1K thermistor (16ch × 2B LE, Ω)
+# r_10k = 0x46          # 10K thermistor (16ch × 2B LE, Ω)
+diag_temperature = 0x66 # Board temperature (1B, °C)
+# cnt_enable = 0x67     # Counter enable bitmask (2B LE)
+# dc_cnt_rst = 0x69     # Counter reset
+# dc_cnt = 0x6A         # Edge counters (16ch × 4B)
+revision_major = 0xDB   # Hardware revision major (219)
+revision_minor = 0xDC   # Hardware revision minor
+voltage_scale = 1000.0

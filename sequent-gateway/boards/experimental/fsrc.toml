@@ -1,0 +1,64 @@
+# Board Definition: Sequent FSRC (Flagstaff Research Controller) HAT
+# https://sequentmicrosystems.com
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/fsrc-rpi/blob/master/src/data.h
+#
+# I/O capabilities:
+#   - 8 MOSFET (FET) outputs (reg 0x00/0x01/0x02 — mapped as relays)
+#   - 4 digital inputs (reg 0x03)
+#   - 2 × 0-10V analog outputs (reg 0x04, 2B LE, mV)
+#   - 12 × 0-5V analog inputs (reg 0x10, 2B LE, mV)
+#   - 4 pump PWM outputs (reg 0x08, 2B LE, 0-100%)
+#   - 3 RTD temperature sensors (float32)
+#
+# Additional features NOT mapped by the current RegisterMap schema:
+#   - Pump PWM outputs (4ch at reg 0x08)
+#   - RTD temperature/resistance (3ch × 4B float at reg 0x28/0x34)
+#   - Digital edge counting (4ch × 4B at reg 0x70)
+#   - 14 × 1-Wire bus sensors (reg 0x80+)
+#   - WDT, RTC, RS-485/Modbus
+#   - Pump PWM prescaler (reg 0xAB)
+#
+# NOTE: The analog inputs are 0-5V, not 0-10V. The voltage_scale and
+#       interpretation will differ from standard 0-10V boards.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent FSRC Controller HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x0C
+mode = "direct"         # base + stack_id
+
+[channels]
+relays = 8              # MOSFET (FET) outputs, controlled like relays
+opto_inputs = 4         # Digital inputs
+analog_0_10v_inputs = 12 # Actually 0-5V inputs — scale differs!
+
+[registers]
+relay_val = 0x00        # FET output bitmask (8 ch, read)
+relay_set = 0x01        # Write channel to SET
+relay_clr = 0x02        # Write channel to CLEAR
+opto_in = 0x03          # Digital input bitmask (4 ch, read)
+u0_10_out = 0x04        # 0-10V output base (2ch × 2B LE, mV)
+# pump_pwm = 0x08       # 4ch × 2B LE, pump PWM (0-100%)
+u0_10_in = 0x10         # 0-5V input base (12ch × 2B LE, mV)
+# rtd_temp = 0x28       # 3ch × 4B float, RTD temperature (°C)
+# rtd_res = 0x34        # 3ch × 4B float, RTD resistance (Ω)
+calib_value = 0x40      # Calibration value (4B float)
+# modbus_settings = 0x47
+# rtc_year = 0x4C
+# wdt_reset = 0x59
+# digi_rising = 0x6D    # Digital rising edge enable
+# digi_falling = 0x6E   # Digital falling edge enable
+# digi_count = 0x70     # 4ch × 4B, digital edge counters
+# owb_dev = 0x80        # 1-Wire device count
+revision_major = 0xFD   # Firmware revision major (no HW rev on this board)
+revision_minor = 0xFE   # Firmware revision minor
+voltage_scale = 1000.0

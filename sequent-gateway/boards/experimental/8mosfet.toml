@@ -1,0 +1,33 @@
+# Board Definition: Sequent 8-MOSFET HAT
+# https://sequentmicrosystems.com/products/eight-mosfets-8-layer-stackable-hat-for-raspberry-pi
+#
+# Protocol: PCA9535 I/O expander.
+# I²C address = (base + stack_id) ^ 0x07
+#
+# Register map derived from:
+#   https://github.com/SequentMicrosystems/8mosind-rpi
+#
+# NOTE: Same base address (0x38) as 8-relay, 4-relay, and 8-relay-hv.
+#       Only ONE board type per address range can be stacked.
+#
+# NOTE: This board also has a Sequent MCU for analog features (0-10V in,
+#       current sensing) — see 8mosind_mcu.toml for that side.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 8-MOSFET HAT (relay outputs)"
+protocol = "pca9535"
+
+[address]
+base = 0x38
+mode = "xor7"           # (base + stack_id) ^ 0x07
+
+[channels]
+relays = 8              # MOSFETs controlled like relays
+relay_remap = [7, 6, 5, 4, 3, 2, 1, 0]
+
+[pca9535]
+outport_reg = 0x02
+inport_reg = 0x00
+config_reg = 0x06

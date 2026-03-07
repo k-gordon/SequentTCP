@@ -1,0 +1,43 @@
+# Board Definition: Sequent RTD Data Acquisition HAT
+# https://sequentmicrosystems.com/products/rtd-data-acquisition-card-for-rpi
+#
+# Protocol: Sequent custom MCU with 1-byte register address prefix.
+# I²C address = base + stack_id.
+#
+# Register map ported from:
+#   https://github.com/SequentMicrosystems/rtd-rpi
+#
+# I/O capabilities:
+#   - 8 RTD (Pt100/Pt1000) temperature inputs (float, °C)
+#   - 8 RTD resistance readings (float, Ω)
+#
+# This board only has temperature sensor inputs — no relays, analog out,
+# or digital I/O.  The current RegisterMap schema does not have fields
+# for RTD/float registers; those extra registers are noted in comments.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent RTD Data Acquisition HAT"
+protocol = "sequent_mcu"
+
+[address]
+base = 0x40
+mode = "direct"         # base + stack_id
+
+[channels]
+# No standard relay/opto/analog channels — RTD only
+# 8 RTD sensors are NOT yet representable in the channel config
+
+[registers]
+# --- RTD registers (NOT mapped by current schema) ---
+# rtd_temp1-8 = 0x00    # 8ch × 4B float, temperature in °C
+# rtd_res1-8 = 0x3B     # 8ch × 4B float, resistance in Ω
+diag_temperature = 0x20 # Board temperature (1B, °C)
+diag_5v = 0x21          # 5V rail voltage (2B LE, mV)
+# wdt_reset = 0x23      # WDT reload (write 0xCA)
+# wdt_interval = 0x24   # WDT period (2B LE, seconds)
+revision_major = 0x2E   # Hardware revision major
+revision_minor = 0x2F   # Hardware revision minor
+# Note: Firmware version at ~0x30/0x31
+voltage_scale = 1000.0

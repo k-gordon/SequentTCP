@@ -1,0 +1,34 @@
+# Board Definition: Sequent 8-Relay HV HAT
+# https://sequentmicrosystems.com/products/industrial-8-relay-hat-for-raspberry-pi
+#
+# Protocol: PCA9535 I/O expander — identical register layout to 8-Relay HAT.
+# I²C address = (base + stack_id) ^ 0x07
+#
+# Register map derived from:
+#   https://github.com/SequentMicrosystems/8relayhv-rpi
+#
+# The HV (high-voltage) variant uses heavier-duty relays rated for
+# higher current/voltage, but the I²C interface is the same as the
+# standard 8-relay board.
+#
+# NOTE: Same base address (0x38) as 8-relay, 4-relay, and 8-mosfet.
+#       Only ONE board type per address range can be stacked.
+#
+# ⚠️  EXPERIMENTAL — not validated on real hardware.
+
+[board]
+name = "Sequent 8-Relay HV HAT"
+protocol = "pca9535"
+
+[address]
+base = 0x38
+mode = "xor7"           # (base + stack_id) ^ 0x07
+
+[channels]
+relays = 8
+relay_remap = [7, 6, 5, 4, 3, 2, 1, 0]
+
+[pca9535]
+outport_reg = 0x02
+inport_reg = 0x00
+config_reg = 0x06
