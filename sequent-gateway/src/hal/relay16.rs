@@ -128,11 +128,6 @@ impl RelayBoard {
         Ok(())
     }
 
-    /// Return the stack ID (for logging).
-    pub fn stack_id(&self) -> u8 {
-        self.stack_id
-    }
-
     /// Return the number of relay channels (from board definition).
     pub fn relay_count(&self) -> usize {
         self.ch_remap.len()

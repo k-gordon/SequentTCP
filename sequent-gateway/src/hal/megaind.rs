@@ -230,11 +230,6 @@ impl MegaIndBoard {
         self.i2c_read(self.regs.revision_major, &mut buf)?;
         Ok((buf[0], buf[1]))
     }
-
-    /// Return the stack ID (for logging).
-    pub fn stack_id(&self) -> u8 {
-        self.stack_id
-    }
 }
 
 impl super::traits::SequentBoard for MegaIndBoard {
