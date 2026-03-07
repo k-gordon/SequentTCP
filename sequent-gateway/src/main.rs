@@ -149,7 +149,6 @@ async fn main() -> Result<()> {
 
     // Pick the relay board def (relay16 takes priority if both are specified;
     // relay8 uses the same RelayBoard HAL).
-    let has_relay = board_types.iter().any(|b| b == "relay16" || b == "relay8");
     let relay_def = if board_types.iter().any(|b| b == "relay16") {
         relay16_def
     } else if board_types.iter().any(|b| b == "relay8") {
@@ -163,24 +162,9 @@ async fn main() -> Result<()> {
         env!("CARGO_PKG_VERSION")
     );
     info!("Boards: [{}]", board_types.join(", "));
-    if board_types.iter().any(|b| b == "megaind") {
-        info!(
-            "Industrial HAT: stack {} → I²C 0x{:02X} ({})",
-            args.ind_stack,
-            megaind_def.address.resolve(args.ind_stack),
-            megaind_def.board.name
-        );
-    }
-    if has_relay {
-        let relay_count = relay_def.channels.relays.unwrap_or(16) as usize;
-        info!(
-            "Relay HAT:      stack {} → I²C 0x{:02X} ({}, {} channels)",
-            args.relay_stack,
-            relay_def.address.resolve(args.relay_stack),
-            relay_def.board.name,
-            relay_count
-        );
-    }
+    // Per-board identity logging (name, stack, caps) is handled by
+    // registry.log_startup_summary() inside the poll loop, which uses
+    // board.name() and board.stack_id() from trait objects.
     if args.map_opto_to_reg {
         info!("Opto-inputs also mapped to Holding Register 15");
     }
@@ -498,7 +482,7 @@ fn poll_loop(
         // 4. HEARTBEAT ────────────────────────────────────────────────
         if last_heartbeat.elapsed() >= heartbeat_duration {
             let db = data_bank.read().unwrap();
-            log_heartbeat(&db, &ch_wd, relay_count, watchdog.recovery_count());
+            log_heartbeat(&db, &registry, &ch_wd, watchdog.recovery_count());
             last_heartbeat = Instant::now();
         }
 
@@ -521,14 +505,16 @@ fn poll_loop(
 // ════════════════════════════════════════════════════════════════════════
 
 /// Log a full system heartbeat, reading all values from the shared
-/// [`DataBank`].  Per-channel health status comes from the
-/// [`ChannelWatchdog`].
+/// [`DataBank`].  Board identity (name, stack ID) comes from the
+/// [`BoardRegistry`] via trait objects.  Per-channel health status
+/// comes from the [`ChannelWatchdog`].
 fn log_heartbeat(
     db: &DataBank,
+    registry: &BoardRegistry,
     ch_wd: &ChannelWatchdog,
-    relay_count: usize,
     i2c_recoveries: u32,
 ) {
+    let relay_count = registry.total_relay_count();
     // Reconstruct display values from DataBank (HR stores × 100)
     let ma_str: String = (0..I4_20_IN_CHANNELS)
         .map(|i| format!("{:4.1}", db.holding_registers[i] as f32 / 100.0))
@@ -569,6 +555,9 @@ fn log_heartbeat(
         .collect();
 
     info!("--- SYSTEM HEARTBEAT ---");
+    for board in registry.boards() {
+        info!("BOARD: {} (stack {})", board.name(), board.stack_id());
+    }
     info!("POWER: {voltage:.2}V [{}]", ch_wd.status_tag(channel_watchdog::Channel::Psu));
     info!("4-20mA (1-8) : [{ma_str}] mA [{}]", ch_wd.status_tag(channel_watchdog::Channel::Ma));
     info!("0-10V  (1-4) : [{v_str}] V [{}]", ch_wd.status_tag(channel_watchdog::Channel::Volt));

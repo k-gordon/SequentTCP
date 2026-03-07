@@ -22,7 +22,6 @@ use crate::databank::DataBank;
 /// Used for runtime introspection — the poll loop and diagnostics can
 /// query a board's capabilities without type-level dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[allow(dead_code)]
 pub enum BoardCapability {
     /// Digital relay outputs (Modbus coils).
     Relays,
@@ -53,7 +52,6 @@ pub enum BoardCapability {
 ///
 /// Default implementations are no-ops, so boards only need to override
 /// the methods matching their capabilities.
-#[allow(dead_code)]
 pub trait SequentBoard: Send {
     /// Human-readable board name (for logging and diagnostics).
     fn name(&self) -> &str;

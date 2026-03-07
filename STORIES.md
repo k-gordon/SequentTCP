@@ -535,10 +535,10 @@
 **so that** stack IDs come from the actual board instance rather than duplicated CLI args.
 
 **Acceptance Criteria:**
-- [ ] Startup log uses `board.name()` and `board.stack_id()` from the registry
-- [ ] Heartbeat log references board identity from trait objects
-- [ ] `args.ind_stack` / `args.relay_stack` still used for board construction, but not for logging after init
-- [ ] Remove `#[allow(dead_code)]` from `stack_id()` on both HAL structs
+- [x] Startup log uses `board.name()` and `board.stack_id()` from the registry
+- [x] Heartbeat log references board identity from trait objects
+- [x] `args.ind_stack` / `args.relay_stack` still used for board construction, but not for logging after init
+- [x] Remove `#[allow(dead_code)]` from `stack_id()` on both HAL structs
 
 ---
 

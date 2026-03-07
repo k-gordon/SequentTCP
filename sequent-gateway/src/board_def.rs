@@ -58,6 +58,7 @@ pub struct AddressConfig {
 
 impl AddressConfig {
     /// Compute the actual I²C slave address for a given stack ID.
+    #[allow(dead_code)] // called from Linux HAL constructors and tests
     pub fn resolve(&self, stack_id: u8) -> u16 {
         let raw = self.base + stack_id as u16;
         match self.mode.as_str() {
