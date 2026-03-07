@@ -309,9 +309,9 @@
 **so that** I can poll gateway status from dashboards and alerting tools.
 
 **Acceptance Criteria:**
-- [ ] `--health-port <PORT>` (default: disabled)
-- [ ] `GET /health` returns JSON: `{ "status": "ok", "uptime_s": 1234, "last_cycle_ms": 0.4, "i2c_errors": 0 }`
-- [ ] Lightweight: `hyper` or `axum` minimal server, no heavy framework
+- [x] `--health-port <PORT>` (default: disabled)
+- [x] `GET /health` returns JSON: `{ "status": "ok", "uptime_s": 1234, "last_cycle_ms": 0.4, "i2c_errors": 0 }`
+- [x] Lightweight: raw `tokio::net::TcpListener` — no heavy framework
 
 ---
 

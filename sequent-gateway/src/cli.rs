@@ -71,4 +71,12 @@ pub struct Cli {
     /// Consecutive per-channel read failures before marking FAULT (0 = disabled)
     #[arg(long, default_value_t = 5)]
     pub channel_fault_threshold: u32,
+
+    /// TCP port for the HTTP health endpoint (disabled if not set).
+    ///
+    /// When set, a lightweight HTTP server serves `GET /health` with JSON
+    /// status including uptime, last cycle time, I²C error count, and
+    /// per-channel health.
+    #[arg(long)]
+    pub health_port: Option<u16>,
 }

@@ -4,6 +4,7 @@ mod channel_watchdog;
 mod cli;
 mod databank;
 mod hal;
+mod health;
 mod i2c_recovery;
 mod modbus;
 mod registers;
@@ -24,6 +25,7 @@ use cli::Cli;
 use databank::DataBank;
 use hal::megaind::MegaIndBoard;
 use hal::relay16::RelayBoard;
+use health::HealthStats;
 use i2c_recovery::I2cWatchdog;
 use registers::{I4_20_IN_CHANNELS, OD_CHANNELS, OPTO_CHANNELS, RELAY16_CHANNELS, U0_10_IN_CHANNELS};
 use slave_map::SlaveMap;
@@ -159,11 +161,13 @@ async fn main() -> Result<()> {
     // ── Shared state ─────────────────────────────────────────────────
     let data_bank = Arc::new(RwLock::new(DataBank::new()));
     let running = Arc::new(AtomicBool::new(true));
+    let health_stats = Arc::new(HealthStats::new());
 
     // ── I²C poll loop (dedicated OS thread — blocking I/O) ──────────
     let poll_handle = {
         let db = data_bank.clone();
         let run = running.clone();
+        let hs = health_stats.clone();
         let ind_stack = args.ind_stack;
         let relay_stack = args.relay_stack;
         let map_opto = args.map_opto_to_reg;
@@ -185,15 +189,29 @@ async fn main() -> Result<()> {
                     relay16_def,
                     i2c_reset_threshold,
                     channel_fault_threshold,
+                    hs,
                 );
             })?
     };
 
     // ── Modbus TCP server (async) ────────────────────────────────────
+    let health_port = args.health_port;
     tokio::select! {
         result = modbus::serve(&args.host, args.port, data_bank.clone(), slave_map.clone()) => {
             if let Err(e) = result {
                 error!("Modbus server error: {e:#}");
+            }
+        }
+        result = async {
+            if let Some(port) = health_port {
+                health::serve(port, health_stats.clone()).await
+            } else {
+                // No health port — never resolve (park forever)
+                std::future::pending::<anyhow::Result<()>>().await
+            }
+        } => {
+            if let Err(e) = result {
+                error!("Health endpoint error: {e:#}");
             }
         }
         _ = tokio::signal::ctrl_c() => {
@@ -234,6 +252,7 @@ fn poll_loop(
     relay16_def: BoardDef,
     i2c_reset_threshold: u32,
     channel_fault_threshold: u32,
+    health_stats: Arc<HealthStats>,
 ) {
     // ── Initialise hardware ──────────────────────────────────────────
     let mut ind_board = match MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def) {
@@ -411,6 +430,8 @@ fn poll_loop(
 
         // 5. SLEEP FOR REMAINDER OF CYCLE ─────────────────────────────
         let elapsed = cycle_start.elapsed();
+        health_stats.set_cycle_time(elapsed.as_micros() as u64);
+        health_stats.update_channel_status(&ch_wd);
         debug!("I/O cycle: {:.2}ms", elapsed.as_secs_f64() * 1000.0);
         if elapsed < POLL_INTERVAL {
             std::thread::sleep(POLL_INTERVAL - elapsed);
