@@ -70,8 +70,10 @@ struct GatewaySection {
     health_port: u16,
     #[serde(default = "default_modbus_port")]
     modbus_port: u16,
-    #[serde(default = "bool_true")]
+    #[serde(default)]
     builtin_defaults: bool,
+    #[serde(default = "default_boards_dir")]
+    boards_dir: String,
     #[serde(default)]
     extra_args: Vec<String>,
 }
@@ -115,6 +117,9 @@ struct TestSection {
 // Serde default helpers
 fn default_boards() -> Vec<String> {
     vec!["megaind".into(), "relay16".into()]
+}
+fn default_boards_dir() -> String {
+    "boards".into()
 }
 fn default_health_port() -> u16 {
     8080
@@ -162,6 +167,7 @@ pub struct ScenarioConfig {
     pub health_port: u16,
     pub modbus_port: u16,
     pub builtin_defaults: bool,
+    pub boards_dir: String,
     pub extra_args: Vec<String>,
 
     // Expected capabilities
@@ -204,6 +210,7 @@ impl ScenarioConfig {
             health_port: raw.gateway.health_port,
             modbus_port: raw.gateway.modbus_port,
             builtin_defaults: raw.gateway.builtin_defaults,
+            boards_dir: raw.gateway.boards_dir,
             extra_args: raw.gateway.extra_args,
 
             relay_count: raw.expect.relay_count,
@@ -246,6 +253,8 @@ impl ScenarioConfig {
         if self.single_slave {
             args.push("--single-slave".into());
         }
+        args.push("--boards-dir".into());
+        args.push(self.boards_dir.clone());
         if self.builtin_defaults {
             args.push("--builtin-defaults".into());
         }

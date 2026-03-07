@@ -2,6 +2,8 @@
 #
 # Industrial HAT only — no relay board attached.  Verifies that the
 # gateway works correctly when relay channels are absent.
+#
+# Board definitions are loaded from the TOML files in boards/.
 
 [scenario]
 name = "MegaInd Only"
@@ -15,7 +17,7 @@ ind_slave_id = 2
 ind_stack = 1
 relay_stack = 0
 health_port = 8080
-builtin_defaults = true
+boards_dir = "boards"
 extra_args = []
 
 [expect]

@@ -89,7 +89,8 @@ class ScenarioConfig:
     relay_stack: int = 0
     health_port: int = 8080
     modbus_port: int = 502
-    builtin_defaults: bool = True
+    builtin_defaults: bool = False
+    boards_dir: str = "boards"
     extra_args: list[str] = field(default_factory=list)
 
     # Expected capabilities
@@ -134,6 +135,7 @@ class ScenarioConfig:
         sc.health_port = gw.get("health_port", sc.health_port)
         sc.modbus_port = gw.get("modbus_port", sc.modbus_port)
         sc.builtin_defaults = gw.get("builtin_defaults", sc.builtin_defaults)
+        sc.boards_dir = gw.get("boards_dir", sc.boards_dir)
         sc.extra_args = gw.get("extra_args", sc.extra_args)
 
         # [expect]
@@ -171,6 +173,7 @@ class ScenarioConfig:
         cmd += ["--ind-slave-id", str(self.ind_slave_id)]
         if self.single_slave:
             cmd.append("--single-slave")
+        cmd += ["--boards-dir", self.boards_dir]
         if self.builtin_defaults:
             cmd.append("--builtin-defaults")
         cmd += self.extra_args

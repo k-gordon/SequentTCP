@@ -2,6 +2,8 @@
 #
 # Smaller relay HAT — verifies the gateway handles 8-channel relay
 # boards correctly, including relay_count and read-back behaviour.
+#
+# Board definitions are loaded from the TOML files in boards/.
 
 [scenario]
 name = "8-Relay Only"
@@ -15,7 +17,7 @@ ind_slave_id = 2          # not used
 ind_stack = 1
 relay_stack = 0
 health_port = 8080
-builtin_defaults = true
+boards_dir = "boards"
 extra_args = []
 
 [expect]

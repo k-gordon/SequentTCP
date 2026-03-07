@@ -2,6 +2,8 @@
 #
 # Relay HAT only — no MegaInd.  Verifies the gateway operates with
 # relay boards even when analog I/O channels are absent.
+#
+# Board definitions are loaded from the TOML files in boards/.
 
 [scenario]
 name = "16-Relay Only"
@@ -15,7 +17,7 @@ ind_slave_id = 2          # not used (no megaind)
 ind_stack = 1
 relay_stack = 0
 health_port = 8080
-builtin_defaults = true
+boards_dir = "boards"
 extra_args = []
 
 [expect]
