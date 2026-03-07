@@ -135,13 +135,56 @@ pub struct ValidateArgs {
     #[arg(long)]
     pub gateway_bin: Option<PathBuf>,
 
-    /// Directory containing scenario TOML files
-    #[arg(long, default_value = "tests/scenarios")]
-    pub scenario_dir: PathBuf,
+    /// Board types to validate.  Can be specified multiple times.
+    ///
+    /// Names must match `.toml` filenames in `--boards-dir` (without
+    /// the extension).  When omitted, an interactive picker lists the
+    /// boards discovered in `--boards-dir`.
+    #[arg(long = "board", value_name = "TYPE")]
+    pub boards: Vec<String>,
 
-    /// Run only specific scenario file(s); may be repeated.
+    /// Directory containing board definition TOML files
+    #[arg(long, default_value = "boards")]
+    pub boards_dir: PathBuf,
+
+    /// Use single-slave (flat) Modbus addressing
+    #[arg(long)]
+    pub single_slave: bool,
+
+    /// Modbus slave ID for the relay board [1–247]
+    #[arg(long, default_value_t = 1)]
+    pub relay_slave_id: u8,
+
+    /// Modbus slave ID for the industrial HAT [1–247]
+    #[arg(long, default_value_t = 2)]
+    pub ind_slave_id: u8,
+
+    /// I²C stack level for the industrial HAT [0–7]
+    #[arg(long, default_value_t = 1)]
+    pub ind_stack: u8,
+
+    /// I²C stack level for the relay HAT [0–7]
+    #[arg(long, default_value_t = 0)]
+    pub relay_stack: u8,
+
+    /// TCP port for the Modbus server during validation
+    #[arg(long, default_value_t = 502)]
+    pub modbus_port: u16,
+
+    /// TCP port for the health endpoint during validation
+    #[arg(long, default_value_t = 8080)]
+    pub health_port: u16,
+
+    /// Run only specific scenario file(s) (legacy TOML mode).
+    ///
+    /// When provided, bypasses dynamic board discovery and uses the
+    /// static scenario TOML files instead.
     #[arg(long = "scenario")]
     pub scenarios: Vec<PathBuf>,
+
+    /// Directory containing scenario TOML files (legacy mode)
+    #[arg(long, default_value = "tests/scenarios")]
+    pub scenario_dir: PathBuf,
 
     /// Skip relay, open-drain, and analog output write tests.
     ///

@@ -23,6 +23,8 @@ opto_inputs = 8
 analog_4_20ma_inputs = 8
 analog_0_10v_inputs = 4
 od_outputs = 4
+analog_0_10v_outputs = 4
+analog_4_20ma_outputs = 4
 
 [registers]
 relay_val = 0x00        # Current relay/OD output bitmask (read)

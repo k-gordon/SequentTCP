@@ -55,34 +55,43 @@ pub fn run(args: &ValidateArgs) -> Result<()> {
         None => std::env::current_exe().context("cannot determine own exe path")?,
     };
 
-    // ── Discover scenarios ───────────────────────────────────────────
-    let scenario_paths = if !args.scenarios.is_empty() {
-        args.scenarios.clone()
+    // ── Build scenario config(s) ─────────────────────────────────────
+    let configs: Vec<ScenarioConfig> = if !args.scenarios.is_empty() {
+        // Legacy mode: load static TOML scenario files
+        let mut cfgs = Vec::new();
+        for path in &args.scenarios {
+            match ScenarioConfig::from_file(path) {
+                Ok(cfg) => cfgs.push(cfg),
+                Err(e) => eprintln!("  WARNING: skipping {}: {e:#}", path.display()),
+            }
+        }
+        cfgs
     } else {
-        scenario::discover(&args.scenario_dir)?
+        // Dynamic mode: discover boards and build config
+        let available = scenario::discover_boards(&args.boards_dir)?;
+        let (names, defs) = if !args.boards.is_empty() {
+            // CLI-specified boards
+            scenario::resolve_boards(&args.boards, &available)?
+        } else {
+            // Interactive picker
+            scenario::pick_boards_interactive(&available)?
+        };
+        vec![ScenarioConfig::from_boards(&names, &defs, args)]
     };
+
+    if configs.is_empty() {
+        anyhow::bail!("No valid scenarios loaded");
+    }
 
     println!();
     println!("{}", "=".repeat(70));
     println!("  Sequent Gateway -- Automated Hardware Validation");
     println!("  Gateway:    {}", gateway_bin.display());
-    println!("  Scenarios:  {} discovered", scenario_paths.len());
-    for p in &scenario_paths {
-        println!("    * {}", p.display());
+    println!("  Scenarios:  {}", configs.len());
+    for cfg in &configs {
+        println!("    * {}", cfg.name);
     }
     println!("{}", "=".repeat(70));
-
-    // ── Load configs ─────────────────────────────────────────────────
-    let mut configs: Vec<ScenarioConfig> = Vec::new();
-    for path in &scenario_paths {
-        match ScenarioConfig::from_file(path) {
-            Ok(cfg) => configs.push(cfg),
-            Err(e) => eprintln!("  WARNING: skipping {}: {e:#}", path.display()),
-        }
-    }
-    if configs.is_empty() {
-        anyhow::bail!("No valid scenarios loaded");
-    }
 
     // ── Run each scenario ────────────────────────────────────────────
     let mut results = Results::new();

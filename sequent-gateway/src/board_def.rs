@@ -85,6 +85,10 @@ pub struct ChannelConfig {
     pub analog_0_10v_inputs: Option<usize>,
     /// Number of open-drain output channels.
     pub od_outputs: Option<usize>,
+    /// Number of 0-10 V analog output channels.
+    pub analog_0_10v_outputs: Option<usize>,
+    /// Number of 4-20 mA analog output channels.
+    pub analog_4_20ma_outputs: Option<usize>,
 }
 
 /// Register addresses for Sequent custom-MCU boards.
@@ -194,6 +198,8 @@ impl BoardDef {
                 analog_4_20ma_inputs: Some(8),
                 analog_0_10v_inputs: Some(4),
                 od_outputs: Some(4),
+                analog_0_10v_outputs: Some(4),
+                analog_4_20ma_outputs: Some(4),
                 ..Default::default()
             },
             registers: RegisterMap {
