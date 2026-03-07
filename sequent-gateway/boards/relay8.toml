@@ -1,0 +1,27 @@
+# Board Definition: Sequent 8-Relay HAT
+# https://sequentmicrosystems.com/products/eight-relays-8-layer-stackable-hat-for-raspberry-pi
+#
+# Protocol: PCA9535 I/O expander — read-modify-write on OUTPORT register.
+# I²C address = (base + stack_id) ^ 0x07  (active-low address pins).
+#
+# Register map identical to the 16-Relay HAT but only 8 channels are used
+# (lower byte of the 16-bit OUTPORT register).
+#
+# Drop this file into the boards/ directory to override compiled defaults.
+
+[board]
+name = "Sequent 8-Relay HAT"
+protocol = "pca9535"
+
+[address]
+base = 0x38
+mode = "xor7"           # (base + stack_id) ^ 0x07
+
+[channels]
+relays = 8
+relay_remap = [7, 6, 5, 4, 3, 2, 1, 0]
+
+[pca9535]
+outport_reg = 0x02
+inport_reg = 0x00
+config_reg = 0x06

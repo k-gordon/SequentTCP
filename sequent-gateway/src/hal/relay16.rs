@@ -145,4 +145,24 @@ impl RelayBoard {
     pub fn stack_id(&self) -> u8 {
         self.stack_id
     }
+
+    /// Return the number of relay channels (from board definition).
+    pub fn relay_count(&self) -> usize {
+        self.ch_remap.len()
+    }
+}
+
+impl super::traits::SequentBoard for RelayBoard {
+    fn name(&self) -> &str {
+        "Relay HAT"
+    }
+    fn stack_id(&self) -> u8 {
+        self.stack_id
+    }
+    fn capabilities(&self) -> &'static [super::traits::BoardCapability] {
+        &[super::traits::BoardCapability::Relays]
+    }
+    fn relay_count(&self) -> usize {
+        self.ch_remap.len()
+    }
 }

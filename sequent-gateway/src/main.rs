@@ -30,7 +30,7 @@ use i2c_recovery::I2cWatchdog;
 use databank::{HR_I4_20_OUT_BASE, HR_U0_10_OUT_BASE};
 use registers::{
     I4_20_IN_CHANNELS, I4_20_OUT_CHANNELS, OD_CHANNELS, OPTO_CHANNELS,
-    RELAY16_CHANNELS, U0_10_IN_CHANNELS, U0_10_OUT_CHANNELS,
+    U0_10_IN_CHANNELS, U0_10_OUT_CHANNELS,
 };
 use slave_map::SlaveMap;
 
@@ -109,6 +109,30 @@ async fn main() -> Result<()> {
     }
 
     // ── Board definitions ────────────────────────────────────────────
+    // Determine which boards to load.  When --board is not specified,
+    // default to megaind + relay16 for backward compatibility.
+    let board_types: Vec<String> = if args.boards.is_empty() {
+        vec!["megaind".into(), "relay16".into()]
+    } else {
+        args.boards.iter().map(|s| s.to_lowercase()).collect()
+    };
+
+    let use_megaind = board_types.iter().any(|b| b == "megaind");
+    let use_relay16 = board_types.iter().any(|b| b == "relay16");
+    let use_relay8 = board_types.iter().any(|b| b == "relay8");
+
+    // Validate board types
+    for bt in &board_types {
+        match bt.as_str() {
+            "megaind" | "relay16" | "relay8" => {}
+            other => {
+                anyhow::bail!(
+                    "Unknown board type '{other}'. Supported: megaind, relay16, relay8"
+                );
+            }
+        }
+    }
+
     let megaind_def = BoardDef::load_or_default(
         &args.boards_dir.join("megaind.toml"),
         BoardDef::default_megaind(),
@@ -117,23 +141,46 @@ async fn main() -> Result<()> {
         &args.boards_dir.join("relay16.toml"),
         BoardDef::default_relay16(),
     );
+    let relay8_def = BoardDef::load_or_default(
+        &args.boards_dir.join("relay8.toml"),
+        BoardDef::default_relay8(),
+    );
+
+    // Pick the relay board def for the poll loop (relay16 takes priority
+    // if both are specified; relay8 uses the same RelayBoard HAL).
+    let (relay_def, relay_count) = if use_relay16 {
+        let count = relay16_def.channels.relays.unwrap_or(16) as usize;
+        (relay16_def, count)
+    } else if use_relay8 {
+        let count = relay8_def.channels.relays.unwrap_or(8) as usize;
+        (relay8_def, count)
+    } else {
+        // No relay board requested — use relay16 def but poll loop will skip
+        (relay16_def, 0usize)
+    };
 
     info!(
         "Sequent Gateway v{} starting",
         env!("CARGO_PKG_VERSION")
     );
-    info!(
-        "Industrial HAT: stack {} → I²C 0x{:02X} ({})",
-        args.ind_stack,
-        megaind_def.address.resolve(args.ind_stack),
-        megaind_def.board.name
-    );
-    info!(
-        "16-Relay HAT:   stack {} → I²C 0x{:02X} ({})",
-        args.relay_stack,
-        relay16_def.address.resolve(args.relay_stack),
-        relay16_def.board.name
-    );
+    info!("Boards: [{}]", board_types.join(", "));
+    if use_megaind {
+        info!(
+            "Industrial HAT: stack {} → I²C 0x{:02X} ({})",
+            args.ind_stack,
+            megaind_def.address.resolve(args.ind_stack),
+            megaind_def.board.name
+        );
+    }
+    if use_relay16 || use_relay8 {
+        info!(
+            "Relay HAT:      stack {} → I²C 0x{:02X} ({}, {} channels)",
+            args.relay_stack,
+            relay_def.address.resolve(args.relay_stack),
+            relay_def.board.name,
+            relay_count
+        );
+    }
     if args.map_opto_to_reg {
         info!("Opto-inputs also mapped to Holding Register 15");
     }
@@ -190,10 +237,12 @@ async fn main() -> Result<()> {
                     map_opto,
                     log_interval,
                     megaind_def,
-                    relay16_def,
+                    relay_def,
                     i2c_reset_threshold,
                     channel_fault_threshold,
                     hs,
+                    relay_count,
+                    use_megaind,
                 );
             })?
     };
@@ -253,31 +302,44 @@ fn poll_loop(
     map_opto: bool,
     log_interval: u64,
     megaind_def: BoardDef,
-    relay16_def: BoardDef,
+    relay_def: BoardDef,
     i2c_reset_threshold: u32,
     channel_fault_threshold: u32,
     health_stats: Arc<HealthStats>,
+    relay_count: usize,
+    use_megaind: bool,
 ) {
     // ── Initialise hardware ──────────────────────────────────────────
-    let mut ind_board = match MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def) {
-        Ok(mut b) => {
-            if let Ok((major, minor)) = b.read_firmware_version() {
-                info!("Industrial HAT firmware: v{major:02}.{minor:02}");
+    let mut ind_board = if use_megaind {
+        match MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def) {
+            Ok(mut b) => {
+                if let Ok((major, minor)) = b.read_firmware_version() {
+                    info!("Industrial HAT firmware: v{major:02}.{minor:02}");
+                }
+                Some(b)
             }
-            Some(b)
+            Err(e) => {
+                error!("Failed to open Industrial HAT: {e:#}");
+                None
+            }
         }
-        Err(e) => {
-            error!("Failed to open Industrial HAT: {e:#}");
-            None
-        }
+    } else {
+        None
     };
 
-    let mut rel_board = match RelayBoard::new(I2C_BUS, relay_stack, &relay16_def) {
-        Ok(b) => Some(b),
-        Err(e) => {
-            error!("Failed to open 16-Relay HAT: {e:#}");
-            None
+    let mut rel_board = if relay_count > 0 {
+        match RelayBoard::new(I2C_BUS, relay_stack, &relay_def) {
+            Ok(b) => {
+                info!("Relay board opened: {} channels", b.relay_count());
+                Some(b)
+            }
+            Err(e) => {
+                error!("Failed to open Relay HAT: {e:#}");
+                None
+            }
         }
+    } else {
+        None
     };
 
     let mut cache = OutputCache::new();
@@ -341,8 +403,12 @@ fn poll_loop(
             }
             if watchdog.attempt_recovery() {
                 // Re-open I²C device file descriptors
-                ind_board = MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def).ok();
-                rel_board = RelayBoard::new(I2C_BUS, relay_stack, &relay16_def).ok();
+                if use_megaind {
+                    ind_board = MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def).ok();
+                }
+                if relay_count > 0 {
+                    rel_board = RelayBoard::new(I2C_BUS, relay_stack, &relay_def).ok();
+                }
                 cache = OutputCache::new(); // force re-sync all outputs
                 continue; // skip rest of this cycle
             }
@@ -388,9 +454,9 @@ fn poll_loop(
             (db.coils, v_out, ma_out)
         };
 
-        // Relays 1–16 (coils 0–15)
+        // Relays (coils 0..relay_count)
         if let Some(ref mut board) = rel_board {
-            for i in 0..RELAY16_CHANNELS {
+            for i in 0..relay_count {
                 if cache.should_update_relay(i, coils[i]) {
                     let ch = (i + 1) as u8;
                     match board.set_relay(ch, coils[i]) {
@@ -473,7 +539,7 @@ fn poll_loop(
 
         // 4. HEARTBEAT ────────────────────────────────────────────────
         if last_heartbeat.elapsed() >= heartbeat_duration {
-            log_heartbeat(&ma_inputs, &v_inputs, voltage, &opto_bits, &coils, &v_out_regs, &ma_out_regs, &ch_wd);
+            log_heartbeat(&ma_inputs, &v_inputs, voltage, &opto_bits, &coils, &v_out_regs, &ma_out_regs, &ch_wd, relay_count);
             last_heartbeat = Instant::now();
         }
 
@@ -505,6 +571,7 @@ fn log_heartbeat(
     v_out_regs: &[u16; U0_10_OUT_CHANNELS],
     ma_out_regs: &[u16; I4_20_OUT_CHANNELS],
     ch_wd: &ChannelWatchdog,
+    relay_count: usize,
 ) {
     let ma_str: String = ma_inputs
         .iter()
@@ -524,7 +591,7 @@ fn log_heartbeat(
         .map(|&b| if b { '1' } else { '0' })
         .collect();
 
-    let relay_str: String = (0..RELAY16_CHANNELS)
+    let relay_str: String = (0..relay_count)
         .map(|i| {
             if coils.get(i).copied().unwrap_or(false) {
                 '1'

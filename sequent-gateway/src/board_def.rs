@@ -222,6 +222,31 @@ impl BoardDef {
             }),
         }
     }
+
+    /// Compiled defaults for the Sequent 8-Relay HAT.
+    pub fn default_relay8() -> Self {
+        Self {
+            board: BoardInfo {
+                name: "Sequent 8-Relay HAT".into(),
+                protocol: "pca9535".into(),
+            },
+            address: AddressConfig {
+                base: 0x38,
+                mode: "xor7".into(),
+            },
+            channels: ChannelConfig {
+                relays: Some(8),
+                relay_remap: Some(vec![7, 6, 5, 4, 3, 2, 1, 0]),
+                ..Default::default()
+            },
+            registers: RegisterMap::default(),
+            pca9535: Some(Pca9535Config {
+                outport_reg: 0x02,
+                inport_reg: 0x00,
+                config_reg: 0x06,
+            }),
+        }
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -342,5 +367,31 @@ config_reg = 0x06
         assert_eq!(def.address.resolve(0), 0x27);
         assert_eq!(def.pca9535.as_ref().unwrap().outport_reg, 0x02);
         assert_eq!(def.channels.relays.unwrap(), 16);
+    }
+
+    #[test]
+    fn relay8_defaults_have_correct_address() {
+        let def = BoardDef::default_relay8();
+        assert_eq!(def.address.base, registers::RELAY8_BASE_ADDR);
+        assert_eq!(def.address.resolve(0), 0x38 ^ 0x07);
+        assert_eq!(def.channels.relays.unwrap(), 8);
+        let remap = def.channels.relay_remap.as_ref().unwrap();
+        assert_eq!(remap.len(), 8);
+        assert_eq!(remap[0], 7); // relay 1 → bit 7
+        assert_eq!(remap[7], 0); // relay 8 → bit 0
+        assert!(def.pca9535.is_some());
+    }
+
+    #[test]
+    fn toml_file_parse_relay8() {
+        let toml_str = include_str!("../boards/relay8.toml");
+        let def: BoardDef = toml::from_str(toml_str).unwrap();
+        assert_eq!(def.board.name, "Sequent 8-Relay HAT");
+        assert_eq!(def.board.protocol, "pca9535");
+        assert_eq!(def.address.base, 0x38);
+        assert_eq!(def.address.mode, "xor7");
+        assert_eq!(def.channels.relays.unwrap(), 8);
+        assert_eq!(def.channels.relay_remap.as_ref().unwrap().len(), 8);
+        assert!(def.pca9535.is_some());
     }
 }

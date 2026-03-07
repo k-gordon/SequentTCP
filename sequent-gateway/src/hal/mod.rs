@@ -1,3 +1,5 @@
+pub mod traits;
+
 // Real I²C implementations — Linux only (i2cdev crate requires /dev/i2c-*).
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub mod megaind;
@@ -15,6 +17,7 @@ pub mod megaind {
     use anyhow::Result;
     use crate::board_def::BoardDef;
     use crate::registers::{OPTO_CHANNELS, I4_20_IN_CHANNELS, U0_10_IN_CHANNELS};
+    use super::traits::{BoardCapability, SequentBoard};
 
     pub struct MegaIndBoard {
         _stack_id: u8,
@@ -37,15 +40,30 @@ pub mod megaind {
         pub fn read_firmware_version(&mut self) -> Result<(u8, u8)> { unreachable!() }
         pub fn stack_id(&self) -> u8 { self._stack_id }
     }
+
+    impl SequentBoard for MegaIndBoard {
+        fn name(&self) -> &str { "MegaInd Industrial HAT" }
+        fn stack_id(&self) -> u8 { self._stack_id }
+        fn capabilities(&self) -> &'static [BoardCapability] {
+            &[
+                BoardCapability::DiscreteInputs,
+                BoardCapability::DiscreteOutputs,
+                BoardCapability::AnalogInputs,
+                BoardCapability::AnalogOutputs,
+            ]
+        }
+    }
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 pub mod relay16 {
     use anyhow::Result;
     use crate::board_def::BoardDef;
+    use super::traits::{BoardCapability, SequentBoard};
 
     pub struct RelayBoard {
         _stack_id: u8,
+        _relay_count: usize,
     }
 
     impl RelayBoard {
@@ -58,5 +76,15 @@ pub mod relay16 {
         pub fn set_relay(&mut self, _ch: u8, _state: bool) -> Result<()> { unreachable!() }
         pub fn read_relay_state(&mut self) -> Result<u16> { unreachable!() }
         pub fn stack_id(&self) -> u8 { self._stack_id }
+        pub fn relay_count(&self) -> usize { self._relay_count }
+    }
+
+    impl SequentBoard for RelayBoard {
+        fn name(&self) -> &str { "Relay HAT" }
+        fn stack_id(&self) -> u8 { self._stack_id }
+        fn capabilities(&self) -> &'static [BoardCapability] {
+            &[BoardCapability::Relays]
+        }
+        fn relay_count(&self) -> usize { self._relay_count }
     }
 }

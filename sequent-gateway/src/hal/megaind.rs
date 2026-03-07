@@ -234,3 +234,16 @@ impl MegaIndBoard {
         self.stack_id
     }
 }
+
+impl super::traits::SequentBoard for MegaIndBoard {
+    fn name(&self) -> &str {
+        "MegaInd Industrial HAT"
+    }
+    fn stack_id(&self) -> u8 {
+        self.stack_id
+    }
+    fn capabilities(&self) -> &'static [super::traits::BoardCapability] {
+        use super::traits::BoardCapability::*;
+        &[DiscreteInputs, DiscreteOutputs, AnalogInputs, AnalogOutputs]
+    }
+}

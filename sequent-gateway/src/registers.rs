@@ -166,6 +166,12 @@ pub const I4_20_OUT_CHANNELS: usize = 4;
 /// Number of relays on the 16-Relay HAT.
 pub const RELAY16_CHANNELS: usize = 16;
 
+/// Number of relays on the 8-Relay HAT.
+pub const RELAY8_CHANNELS: usize = 8;
+
+/// Base I²C address for the 8-Relay HAT (PCA9535).
+pub const RELAY8_BASE_ADDR: u16 = 0x38;
+
 // ============================================================================
 // Tests
 // ============================================================================

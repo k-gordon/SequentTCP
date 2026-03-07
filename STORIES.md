@@ -359,10 +359,10 @@
 **so that** I can use a single gateway binary for any Sequent hardware combination.
 
 **Acceptance Criteria:**
-- [ ] HAL trait (`SequentBoard`) that `MegaIndBoard` and `RelayBoard` implement
-- [ ] New boards added by implementing the trait + adding a register map module
-- [ ] Board type selectable via CLI (`--board relay16 --board megaind --board relay8`)
-- [ ] At least one additional board type implemented as proof of extensibility
+- [x] HAL trait (`SequentBoard`) that `MegaIndBoard` and `RelayBoard` implement
+- [x] New boards added by implementing the trait + adding a register map TOML
+- [x] Board type selectable via CLI (`--board relay16 --board megaind --board relay8`)
+- [x] At least one additional board type implemented as proof of extensibility (8-Relay HAT)
 
 ---
 

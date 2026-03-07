@@ -5,10 +5,17 @@ use clap::Parser;
 /// Modbus TCP ↔ I²C gateway for Sequent Microsystems HATs.
 ///
 /// Bridges Modbus TCP clients (SCADA, HMI, vPLC) to Sequent Industrial
-/// and 16-Relay HATs over the I²C bus — no CLI tools required.
+/// and Relay HATs over the I²C bus — no CLI tools required.
 #[derive(Parser, Debug)]
 #[command(version, about)]
 pub struct Cli {
+    /// Board types to load.  Can be specified multiple times.
+    ///
+    /// Supported values: `megaind`, `relay16`, `relay8`.
+    /// When omitted, defaults to `megaind` + `relay16` for backward
+    /// compatibility.
+    #[arg(long = "board", value_name = "TYPE")]
+    pub boards: Vec<String>,
     /// IP address to bind the Modbus TCP server
     #[arg(long, default_value = "0.0.0.0")]
     pub host: String,
