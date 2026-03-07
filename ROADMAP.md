@@ -27,13 +27,13 @@ The gateway turns a Raspberry Pi into a high-performance Industrial Modbus Gatew
 
 ---
 
-## 🔜 Planned
+## ✅ Completed — Rust Rewrite
 
-### 🏁 Phase 0 — Native I²C Rewrite (Immediate Next Step)
+> The Python gateway (`modbusTCP.py`) has been **deprecated**. All phases below are implemented in the Rust binary (`sequent-gateway/`). See [STORIES.md](STORIES.md) for the detailed acceptance criteria.
 
-> **Goal:** Eliminate the `subprocess` → CLI-tool bottleneck. The current Python gateway shells out to `megaind` and `16relind` on every read/write cycle — parsing their stdout for values. This works as a proof-of-concept but adds ~50–100 ms of latency per I/O call, limits error handling, and creates a fragile dependency on CLI output formatting.
->
-> The rewrite will talk directly to the I²C bus using the same register map that Sequent's own tools use internally.
+### Phase 0 — Native I²C Rewrite ✅
+
+> The `subprocess` → CLI-tool bottleneck has been eliminated. The Rust gateway talks directly to the I²C bus using the register map from Sequent's `megaind.h` — achieving < 1 ms I/O cycles vs ~100 ms with subprocess.
 
 #### Reference Material
 
@@ -94,49 +94,49 @@ The Python + `smbus2` approach has already been validated against the hardware �
 
 #### Milestone Checklist
 
-- [ ] Scaffold Rust project (`cargo init sequent-gateway`)
-- [ ] Port I²C register map from `megaind.h` → `src/registers.rs` (`#[repr(u8)]` enum)
-- [ ] Implement I²C HAL: `MegaIndBoard` struct wrapping `i2cdev` for the Industrial HAT
-- [ ] Implement I²C HAL: `RelayBoard` struct wrapping `i2cdev` for the 16-Relay HAT
-- [ ] Implement state-caching layer (only write on change, matching current Python behaviour)
-- [ ] Integrate `tokio-modbus` TCP server with the Modbus memory map
-- [ ] Wire up the 10 Hz poll loop (read inputs → update data bank → apply coil writes)
-- [ ] Add heartbeat logging via `tracing` (match current console output format)
-- [ ] Add `clap` CLI (`--host`, `--port`, `--map-opto-to-reg`, `--ind-stack`, `--relay-stack`)
-- [ ] Cross-compile and validate on Raspberry Pi against known-good Python output
-- [ ] Create `systemd` unit file for single-binary deployment
-- [ ] Benchmark: target < 1 ms full I/O cycle (vs ~100+ ms with subprocess)
+- [x] Scaffold Rust project (`cargo init sequent-gateway`)
+- [x] Port I²C register map from `megaind.h` → `src/registers.rs` (`#[repr(u8)]` enum)
+- [x] Implement I²C HAL: `MegaIndBoard` struct wrapping `i2cdev` for the Industrial HAT
+- [x] Implement I²C HAL: `RelayBoard` struct wrapping `i2cdev` for the 16-Relay HAT
+- [x] Implement state-caching layer (only write on change, matching current Python behaviour)
+- [x] Custom Modbus TCP server with MBAP framing (FC 01/02/03/05/06/0F/10)
+- [x] Wire up the 10 Hz poll loop (read inputs → update data bank → apply coil writes)
+- [x] Add heartbeat logging via `tracing` (match current console output format)
+- [x] Add `clap` CLI (`--host`, `--port`, `--ind-stack`, `--relay-stack`, `--board`, etc.)
+- [x] Cross-compile and validate on Raspberry Pi against known-good Python output
+- [x] Create `systemd` unit file for single-binary deployment
+- [x] Sub-millisecond full I/O cycle achieved (vs ~100+ ms with subprocess)
 
 ---
 
-### P1 — Production Readiness
+### P1 — Production Readiness ✅
 
-| Item | Description |
-|---|---|
-| **Systemd Service** | Create a `.service` unit file so the gateway starts on boot and auto-restarts on failure. |
-| **I²C Bus Hardware Reset** | "Nuclear Reset" — toggle GPIO pins to clear a hung I²C bus without a full reboot. |
+| Item | Status | Description |
+|---|---|---|
+| **Systemd Service** | ✅ | `deploy/sequent-gateway.service` — auto-start on boot with restart-on-failure |
+| **I²C Bus Recovery** | ✅ | `i2c_recovery.rs` — GPIO-level SDA/SCL toggle to clear hung bus |
 
-### P2 — Protocol & Addressing
+### P2 — Protocol & Addressing ✅
 
-| Item | Description |
-|---|---|
-| **Multi-Slave Addressing** | Split boards into separate Modbus Slave IDs (e.g. Relay board = Slave 1, Industrial board = Slave 2) for cleaner PLC mapping. |
-| **Configurable Stack IDs** | CLI flags to set the stack ID for each board instead of hardcoded `0` / `1`. |
+| Item | Status | Description |
+|---|---|---|
+| **Multi-Slave Addressing** | ✅ | `slave_map.rs` — route boards to separate Modbus unit IDs |
+| **Configurable Stack IDs** | ✅ | `--ind-stack` / `--relay-stack` CLI flags |
 
-### P3 — Observability & Reliability
+### P3 — Observability & Reliability ✅
 
-| Item | Description |
-|---|---|
-| **File Logging** | Rotating log file output alongside console logging. |
-| **Health Endpoint** | Lightweight HTTP/JSON status endpoint for monitoring dashboards. |
-| **Watchdog Timer** | Detect and recover from stalled I²C reads that exceed a timeout budget. |
+| Item | Status | Description |
+|---|---|---|
+| **Rotating File Logs** | ✅ | `tracing-appender` with `--log-dir` flag |
+| **Health Endpoint** | ✅ | `health.rs` — HTTP/JSON on `--health-port` (lock-free atomics) |
+| **Channel Watchdog** | ✅ | `channel_watchdog.rs` — per-channel timeout with last-known-good fallback |
 
-### P4 — Extended I/O
+### P4 — Extended I/O ✅
 
-| Item | Description |
-|---|---|
-| **Write-Back Registers** | Holding register writes for analog outputs (0-10 V out, if supported by HAT). |
-| **Additional HAT Support** | Extend the abstraction layer to support other Sequent boards (e.g. 8-relay, building automation). |
+| Item | Status | Description |
+|---|---|---|
+| **Analog Output Write-Back** | ✅ | FC 0x06/0x10 for 0-10V (HR 16-19) and 4-20mA (HR 20-23) outputs |
+| **Additional HAT Support** | ✅ | `SequentBoard` trait + `--board` flag + 8-Relay HAT support |
 
 ---
 

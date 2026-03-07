@@ -1,19 +1,50 @@
+#!/usr/bin/env python3
+"""
+╔══════════════════════════════════════════════════════════════════╗
+║  ⚠️  DEPRECATED — DO NOT USE FOR NEW DEPLOYMENTS                ║
+║                                                                  ║
+║  This Python gateway has been superseded by the Rust binary:     ║
+║    sequent-gateway/  (see README.md for build & install)         ║
+║                                                                  ║
+║  The Rust version provides:                                      ║
+║    • Direct I²C HAL (no subprocess shelling to CLI tools)        ║
+║    • < 1 ms I/O cycle (vs ~100 ms with subprocess)               ║
+║    • Analog output write-back (0-10V, 4-20mA)                   ║
+║    • Multi-slave addressing, health endpoint, log rotation       ║
+║    • I²C bus recovery, channel watchdog                          ║
+║    • Dynamic board selection (MegaInd, 16-Relay, 8-Relay)        ║
+║    • Single static binary — no Python runtime on the Pi          ║
+║                                                                  ║
+║  This file is kept for historical reference only.                ║
+╚══════════════════════════════════════════════════════════════════╝
+"""
+
+import sys
+import warnings
+
+warnings.warn(
+    "modbusTCP.py is DEPRECATED. Use the Rust gateway instead: "
+    "see sequent-gateway/ and README.md for instructions.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+print(
+    "\n⚠️  This Python gateway is DEPRECATED.\n"
+    "   The Rust replacement lives in sequent-gateway/.\n"
+    "   Run: cd sequent-gateway && cargo build --release\n"
+    "   See README.md for full instructions.\n",
+    file=sys.stderr,
+)
+
 import time
 import subprocess
 import logging
-import sys
 import os
 import argparse
 from pyModbusTCP.server import ModbusServer, DataBank
 
 """
-INDUSTRIAL GATEWAY INSTALLATION INSTRUCTIONS:
-----------------------------------------------
-1. Create venv: python3 -m venv venv
-2. Install: ./venv/bin/pip install pyModbusTCP
-3. Run: sudo ./venv/bin/python3 i2c_modbus_gateway.py [options]
-
-MODBUS MEMORY MAP (Slave ID 1 or Any):
+LEGACY MODBUS MEMORY MAP (Slave ID 1 or Any):
 ----------------------------------------------
 COILS (Read/Write):
 [0-15]    : Relay Board (Stack 0) Relays 1-16

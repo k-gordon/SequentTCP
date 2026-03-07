@@ -1,14 +1,5 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Virtual environments
-venv/
-.venv/
-env/
-.env/
+# Rust
+target/
 
 # IDE
 .vscode/
@@ -22,14 +13,11 @@ env/
 Thumbs.db
 desktop.ini
 
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-*.egg
-
 # Logs
 *.log
 
-# Rust
-target/
+# Legacy Python (deprecated)
+__pycache__/
+*.py[cod]
+venv/
+.venv/
