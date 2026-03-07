@@ -131,8 +131,10 @@ impl BoardDef {
         Ok(def)
     }
 
-    /// Try to load from `path`; fall back to compiled defaults if missing.
-    pub fn load_or_default(path: &Path, default: Self) -> Self {
+    /// Try to load from `path`; fall back to compiled defaults if missing
+    /// **and** `allow_builtin` is true.  Otherwise bail with a helpful
+    /// message telling the user where to put the TOML file.
+    pub fn load_or_default(path: &Path, default: Self, allow_builtin: bool) -> Result<Self> {
         match Self::load(path) {
             Ok(def) => {
                 info!(
@@ -140,15 +142,24 @@ impl BoardDef {
                     def.board.name,
                     path.display()
                 );
-                def
+                Ok(def)
             }
-            Err(_) => {
+            Err(_) if allow_builtin => {
                 info!(
-                    "No TOML at {}, using built-in defaults for {}",
+                    "No TOML at {}, using built-in defaults for {} (--builtin-defaults)",
                     path.display(),
                     default.board.name
                 );
-                default
+                Ok(default)
+            }
+            Err(e) => {
+                anyhow::bail!(
+                    "Board definition not found: {}\n\
+                     Either create the TOML file or pass --builtin-defaults \
+                     to use compiled-in register maps.\n\
+                     Underlying error: {e:#}",
+                    path.display()
+                );
             }
         }
     }

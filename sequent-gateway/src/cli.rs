@@ -16,6 +16,16 @@ pub struct Cli {
     /// compatibility.
     #[arg(long = "board", value_name = "TYPE")]
     pub boards: Vec<String>,
+
+    /// Fall back to compiled-in register maps when no TOML file is
+    /// found for a board.
+    ///
+    /// Without this flag, the gateway requires a TOML definition in
+    /// `--boards-dir` for every board listed in `--board`.
+    /// Use this for quick testing or migration from older versions.
+    #[arg(long)]
+    pub builtin_defaults: bool,
+
     /// IP address to bind the Modbus TCP server
     #[arg(long, default_value = "0.0.0.0")]
     pub host: String,

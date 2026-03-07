@@ -136,15 +136,18 @@ async fn main() -> Result<()> {
     let megaind_def = BoardDef::load_or_default(
         &args.boards_dir.join("megaind.toml"),
         BoardDef::default_megaind(),
-    );
+        args.builtin_defaults,
+    )?;
     let relay16_def = BoardDef::load_or_default(
         &args.boards_dir.join("relay16.toml"),
         BoardDef::default_relay16(),
-    );
+        args.builtin_defaults,
+    )?;
     let relay8_def = BoardDef::load_or_default(
         &args.boards_dir.join("relay8.toml"),
         BoardDef::default_relay8(),
-    );
+        args.builtin_defaults,
+    )?;
 
     // Pick the relay board def for the poll loop (relay16 takes priority
     // if both are specified; relay8 uses the same RelayBoard HAL).
