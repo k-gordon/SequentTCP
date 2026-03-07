@@ -99,8 +99,35 @@ sudo journalctl -u sequent-gateway -f
 
 ```bash
 curl http://localhost:8080/health
-# {"status":"ok","uptime_s":1234,"last_cycle_ms":0.42,"i2c_errors":0,"channels":{...}}
+# {"status":"ok","uptime_s":1234,"last_cycle_ms":0.42,"i2c_errors":0,"i2c_recoveries":0,"relay_mismatches":0,"channels":{...}}
 ```
+
+### Hardware Validation (on-Pi)
+
+A self-contained test suite exercises the live gateway against real hardware
+and produces a structured PASS/FAIL report.
+
+```bash
+# Prerequisite (one-time)
+pip3 install pyModbusTCP
+
+# Start the gateway in one terminal:
+sudo ./target/release/sequent-gateway --health-port 8080 --builtin-defaults
+
+# Run the validation suite in another:
+python3 tests/hw-validation.py
+
+# Safe mode — skip relay/OD/analog writes (won't toggle outputs):
+python3 tests/hw-validation.py --skip-writes
+
+# Run just one category:
+python3 tests/hw-validation.py --only health
+python3 tests/hw-validation.py --only relay
+python3 tests/hw-validation.py --only stability
+```
+
+The report maps directly to Story 10 and Epic 2 acceptance criteria.
+Copy-paste the output to report results.
 
 ## Architecture
 
