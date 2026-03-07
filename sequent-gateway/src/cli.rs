@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, Subcommand, Args};
 
 /// Modbus TCP ↔ I²C gateway for Sequent Microsystems HATs.
 ///
@@ -105,4 +105,53 @@ pub struct Cli {
     /// per-channel health.
     #[arg(long)]
     pub health_port: Option<u16>,
+
+    /// Optional subcommand (validate, etc.)
+    #[command(subcommand)]
+    pub command: Option<Command>,
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Subcommands
+// ════════════════════════════════════════════════════════════════════════
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum Command {
+    /// Run automated hardware validation tests.
+    ///
+    /// Discovers scenario TOML files, launches the gateway in each
+    /// configuration, runs Modbus + health endpoint tests against it,
+    /// tears it down, and produces a PASS/FAIL report.
+    Validate(ValidateArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ValidateArgs {
+    /// Path to the gateway binary to spawn for each scenario.
+    ///
+    /// Defaults to the currently running executable.
+    #[arg(long)]
+    pub gateway_bin: Option<PathBuf>,
+
+    /// Directory containing scenario TOML files
+    #[arg(long, default_value = "tests/scenarios")]
+    pub scenario_dir: PathBuf,
+
+    /// Run only specific scenario file(s); may be repeated.
+    #[arg(long = "scenario")]
+    pub scenarios: Vec<PathBuf>,
+
+    /// Skip relay, open-drain, and analog output write tests.
+    ///
+    /// Use this when relays control live equipment.
+    #[arg(long)]
+    pub skip_writes: bool,
+
+    /// Duration of the stability test in seconds
+    #[arg(long, default_value_t = 5)]
+    pub stability_duration: u64,
+
+    /// Seconds to wait for the gateway health endpoint at startup
+    #[arg(long, default_value_t = 10)]
+    pub startup_timeout: u64,
 }

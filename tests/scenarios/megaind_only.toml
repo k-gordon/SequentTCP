@@ -1,0 +1,37 @@
+# Test Scenario: MegaInd Only
+#
+# Industrial HAT only — no relay board attached.  Verifies that the
+# gateway works correctly when relay channels are absent.
+
+[scenario]
+name = "MegaInd Only"
+description = "Industrial HAT only, no relay board"
+
+[gateway]
+boards = ["megaind"]
+single_slave = false
+relay_slave_id = 1        # not used (no relay board)
+ind_slave_id = 2
+ind_stack = 1
+relay_stack = 0
+health_port = 8080
+builtin_defaults = true
+extra_args = []
+
+[expect]
+relay_count = 0
+opto_channels = 8
+ma_in_channels = 8
+v_in_channels = 4
+od_channels = 4
+v_out_channels = 4
+ma_out_channels = 4
+relay_readback = false
+
+[tests]
+health = true
+analog_inputs = true
+relay_writes = false
+od_outputs = true
+analog_outputs = true
+stability = true

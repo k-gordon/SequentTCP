@@ -10,6 +10,7 @@ mod i2c_recovery;
 mod modbus;
 mod registers;
 mod slave_map;
+mod validate;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
@@ -49,6 +50,11 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Cli::parse();
+
+    // ── Validate subcommand — early return before server startup ─────
+    if let Some(cli::Command::Validate(ref va)) = args.command {
+        return validate::run(va);
+    }
 
     // ── Logging ──────────────────────────────────────────────────────
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
