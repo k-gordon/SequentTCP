@@ -41,12 +41,56 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
 
     // ── Logging ──────────────────────────────────────────────────────
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "sequent_gateway=info".into()),
-        )
-        .init();
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "sequent_gateway=info".into());
+
+    // Hold the file appender guard in scope for the lifetime of main().
+    // Dropping it flushes remaining log lines.
+    let _log_guard: Option<tracing_appender::non_blocking::WorkerGuard>;
+
+    if let Some(ref log_path) = args.log_file {
+        // Resolve directory and file-name prefix from the supplied path
+        let log_dir = log_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let log_name = log_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "sequent-gateway.log".into());
+
+        let file_appender = tracing_appender::rolling::daily(log_dir, &log_name);
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        _log_guard = Some(guard);
+
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::stdout),
+            )
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_ansi(false)
+                    .with_writer(non_blocking),
+            )
+            .init();
+
+        // Best-effort cleanup of old log files
+        cleanup_old_logs(log_dir, &log_name, args.log_retention);
+
+        // This message goes to both stdout and the file
+        tracing::info!(
+            "Logging to file: {} (daily rotation, retaining {} files)",
+            log_path.display(),
+            args.log_retention
+        );
+    } else {
+        _log_guard = None;
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .init();
+    };
 
     // ── Root check ───────────────────────────────────────────────────
     #[cfg(unix)]
@@ -420,4 +464,45 @@ fn log_heartbeat(
     info!("RELAYS (1-16): {relay_str}");
     info!("OD OUT (1-4) : {od_str}");
     info!("------------------------");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Log file cleanup
+// ════════════════════════════════════════════════════════════════════════
+
+/// Delete rotated log files older than `keep` days.
+///
+/// `tracing-appender` creates files like `gateway.log.2026-03-06`.
+/// This function lists siblings in `log_dir` that start with `prefix`
+/// and removes all but the newest `keep` files.
+fn cleanup_old_logs(log_dir: &std::path::Path, prefix: &str, keep: usize) {
+    let Ok(entries) = std::fs::read_dir(log_dir) else {
+        return;
+    };
+
+    let mut log_files: Vec<std::path::PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().starts_with(prefix))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    if log_files.len() <= keep {
+        return;
+    }
+
+    // Sort alphabetically — date-suffixed names sort chronologically
+    log_files.sort();
+
+    let to_remove = log_files.len() - keep;
+    for path in log_files.iter().take(to_remove) {
+        if let Err(e) = std::fs::remove_file(path) {
+            tracing::warn!("Failed to remove old log file {}: {e}", path.display());
+        } else {
+            tracing::debug!("Removed old log file: {}", path.display());
+        }
+    }
 }

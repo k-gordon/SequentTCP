@@ -294,9 +294,9 @@
 **so that** I can diagnose issues after the fact.
 
 **Acceptance Criteria:**
-- [ ] `--log-file <PATH>` flag (default: none / stdout only)
-- [ ] `tracing-appender` for daily or size-based rotation
-- [ ] Retain last 7 log files by default
+- [x] `--log-file <PATH>` flag (default: none / stdout only)
+- [x] `tracing-appender` for daily or size-based rotation
+- [x] Retain last 7 log files by default
 
 ---
 

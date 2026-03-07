@@ -55,4 +55,16 @@ pub struct Cli {
     /// slave ID (the relay-slave-id value) using the flat memory map.
     #[arg(long)]
     pub single_slave: bool,
+
+    /// Path to a log file for rotating file output.
+    ///
+    /// When set, logs are written to both stdout and a daily-rotated file
+    /// at the given path. The filename will have a date suffix appended
+    /// (e.g. `gateway.log.2026-03-06`).
+    #[arg(long)]
+    pub log_file: Option<PathBuf>,
+
+    /// Number of rotated log files to retain (default: 7)
+    #[arg(long, default_value_t = 7)]
+    pub log_retention: usize,
 }
