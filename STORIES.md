@@ -204,12 +204,12 @@
 - [ ] Binary cross-compiles with `cross build --release --target aarch64-unknown-linux-gnu`
 - [x] Binary runs on Raspberry Pi 4 (64-bit Raspberry Pi OS)
 - [ ] Side-by-side test: run Python gateway and Rust gateway on same hardware, compare Modbus register reads from an external client
-- [ ] All 8 × 4-20 mA channels read correctly (within ±0.1 mA of Python output)
-- [ ] All 4 × 0-10 V channels read correctly
-- [ ] Opto inputs match
-- [x] All 16 relays toggle correctly via coil writes
-- [ ] All 4 OD outputs toggle correctly
-- [ ] Benchmark: full I/O cycle time logged and confirmed < 1 ms
+- [ ] All 8 × 4-20 mA channels read correctly (within ±0.1 mA of Python output)  *(HW-11/12 — needs re-run with `--ind-slave-id 2`)*
+- [ ] All 4 × 0-10 V channels read correctly  *(HW-13 — needs re-run)*
+- [ ] Opto inputs match  *(HW-15 — needs re-run)*
+- [x] All 16 relays toggle correctly via coil writes  *(HW-20–26 ✅ 2026-03-06)*
+- [ ] All 4 OD outputs toggle correctly  *(HW-30–33 — needs re-run with correct unit-id)*
+- [ ] Benchmark: full I/O cycle time < 15 ms  *(revised from < 1 ms; ~9 ms actual with ~15 I²C txns at 100 kHz — 10× faster than Python)*
 
 ---
 
