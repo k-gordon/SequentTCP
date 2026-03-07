@@ -410,11 +410,11 @@
 **so that** I can monitor bus reliability from dashboards and set up alerts.
 
 **Acceptance Criteria:**
-- [ ] Every `Err` branch in the poll loop's I²C reads calls `health_stats.inc_i2c_errors()`
-- [ ] Every `Err` branch in the poll loop's I²C writes calls `health_stats.inc_i2c_errors()`
-- [ ] `GET /health` JSON field `i2c_errors` reflects the cumulative count
-- [ ] `status` field degrades to `"degraded"` when error count > 0 in the last cycle
-- [ ] Unit test: increment counter, verify JSON output includes updated value
+- [x] Every `Err` branch in the poll loop's I²C reads calls `health_stats.inc_i2c_errors()`
+- [x] Every `Err` branch in the poll loop's I²C writes calls `health_stats.inc_i2c_errors()`
+- [x] `GET /health` JSON field `i2c_errors` reflects the cumulative count
+- [x] `status` field degrades to `"degraded"` when error count > 0 in the last cycle
+- [x] Unit test: increment counter, verify JSON output includes updated value
 
 ---
 
@@ -427,9 +427,9 @@
 **so that** I can see how often the bus is being reset without tailing logs.
 
 **Acceptance Criteria:**
-- [ ] `I2cWatchdog::recovery_count()` value is included in `/health` JSON as `"i2c_recoveries"`
-- [ ] Heartbeat log includes recovery count when > 0
-- [ ] Unit test: verify JSON field is present and correct after simulated recoveries
+- [x] `I2cWatchdog::recovery_count()` value is included in `/health` JSON as `"i2c_recoveries"`
+- [x] Heartbeat log includes recovery count when > 0
+- [x] Unit test: verify JSON field is present and correct after simulated recoveries
 
 ---
 
@@ -442,10 +442,10 @@
 **so that** adding a new channel type in the future doesn't require editing every loop.
 
 **Acceptance Criteria:**
-- [ ] `HealthStats::update_channel_status()` uses `Channel::ALL` for its iteration
-- [ ] Heartbeat `log_heartbeat()` uses `Channel::ALL` where applicable
-- [ ] No remaining hard-coded `[Channel::Ma, Channel::Volt, Channel::Psu, Channel::Opto]` arrays outside of the `ALL` definition
-- [ ] Existing channel watchdog tests still pass (60+)
+- [x] `HealthStats::update_channel_status()` uses `Channel::ALL` for its iteration
+- [x] Heartbeat `log_heartbeat()` uses `Channel::ALL` where applicable
+- [x] No remaining hard-coded `[Channel::Ma, Channel::Volt, Channel::Psu, Channel::Opto]` arrays outside of the `ALL` definition
+- [x] Existing channel watchdog tests still pass (60+)
 
 ---
 

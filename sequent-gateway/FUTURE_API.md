@@ -2,7 +2,8 @@
 
 > These public methods and traits are implemented, tested, and
 > suppressed with `#[allow(dead_code)]`. They exist as extension
-> points for future work but are **not wired into the runtime today**.
+> points for future work but are **not wired into the runtime today**
+> (unless marked ✅ below).
 
 ---
 
@@ -54,7 +55,7 @@ secondary trait for each capability group.
 
 ---
 
-## 2. `Channel::ALL`
+## 2. `Channel::ALL` ✅ Wired (SEQGW-22)
 
 **File:** `src/channel_watchdog.rs`
 
@@ -128,7 +129,7 @@ info!("Board {} at stack {}", board.name(), board.stack_id());
 
 ---
 
-## 5. `HealthStats::inc_i2c_errors()`
+## 5. `HealthStats::inc_i2c_errors()` ✅ Wired (SEQGW-20)
 
 **File:** `src/health.rs`
 
@@ -161,7 +162,7 @@ error count shows up automatically:
 
 ---
 
-## 6. `I2cWatchdog::recovery_count()`
+## 6. `I2cWatchdog::recovery_count()` ✅ Wired (SEQGW-21)
 
 **File:** `src/i2c_recovery.rs`
 
@@ -190,14 +191,14 @@ format!(r#""i2c_recoveries":{}"#, i2c_wd.recovery_count())
 
 If you decide to activate any of these, here's the rough order:
 
-1. **`inc_i2c_errors()`** — easiest win; one line per `Err` branch
-   in the poll loop. Immediately visible in `/health`.
-2. **`Channel::ALL`** — use in `HealthStats::update_channel_status()`
-   instead of hard-coding the four channels.
-3. **`recovery_count()`** — add to health JSON and/or heartbeat log.
+1. ~~**`inc_i2c_errors()`**~~ ✅ Done — wired into all 8 `Err` branches
+   in the poll loop. Visible in `/health` JSON. (SEQGW-20)
+2. ~~**`Channel::ALL`**~~ ✅ Done — used in `HealthStats::update_channel_status()`
+   instead of hard-coding the four channels. (SEQGW-22)
+3. ~~**`recovery_count()`**~~ ✅ Done — added to health JSON and heartbeat log. (SEQGW-21)
 4. **`read_relay_state()`** — add a periodic read-back verification
-   step at the end of the poll loop (e.g. every 10th tick).
+   step at the end of the poll loop (e.g. every 10th tick). (SEQGW-23)
 5. **`SequentBoard` trait dispatch** — larger refactor; replace the
    `if use_megaind` / `if use_relay16` branching with a board
    registry iterated generically. Best saved for when a third
-   distinct board type is added.
+   distinct board type is added. (SEQGW-25/26)

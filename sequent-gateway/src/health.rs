@@ -44,8 +44,10 @@ use crate::channel_watchdog::{Channel, ChannelWatchdog};
 pub struct HealthStats {
     /// Microseconds of the most recent I/O cycle.
     last_cycle_us: AtomicU64,
-    /// Cumulative I²C read errors since startup.
+    /// Cumulative I²C read/write errors since startup.
     i2c_errors: AtomicU64,
+    /// Total GPIO-level I²C bus recoveries since startup.
+    i2c_recoveries: AtomicU32,
     /// Epoch instant — used to compute uptime.
     start: Instant,
     /// Per-channel fault flags packed as 4 × u8 in a single u32.
@@ -59,6 +61,7 @@ impl HealthStats {
         Self {
             last_cycle_us: AtomicU64::new(0),
             i2c_errors: AtomicU64::new(0),
+            i2c_recoveries: AtomicU32::new(0),
             start: Instant::now(),
             channel_status: AtomicU32::new(0),
         }
@@ -70,9 +73,13 @@ impl HealthStats {
     }
 
     /// Increment the cumulative I²C error counter.
-    #[allow(dead_code)]
     pub fn inc_i2c_errors(&self) {
         self.i2c_errors.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Update the I²C bus recovery counter from the watchdog.
+    pub fn set_recovery_count(&self, count: u32) {
+        self.i2c_recoveries.store(count, Ordering::Relaxed);
     }
 
     /// Snapshot per-channel health from the channel watchdog.
@@ -86,10 +93,10 @@ impl HealthStats {
                 0
             }
         };
-        let val = (pack(Channel::Ma) as u32)
-            | ((pack(Channel::Volt) as u32) << 8)
-            | ((pack(Channel::Psu) as u32) << 16)
-            | ((pack(Channel::Opto) as u32) << 24);
+        let mut val: u32 = 0;
+        for (i, &ch) in Channel::ALL.iter().enumerate() {
+            val |= (pack(ch) as u32) << (i * 8);
+        }
         self.channel_status.store(val, Ordering::Relaxed);
     }
 
@@ -99,6 +106,7 @@ impl HealthStats {
         let cycle_us = self.last_cycle_us.load(Ordering::Relaxed);
         let cycle_ms = cycle_us as f64 / 1000.0;
         let errors = self.i2c_errors.load(Ordering::Relaxed);
+        let recoveries = self.i2c_recoveries.load(Ordering::Relaxed);
         let cs = self.channel_status.load(Ordering::Relaxed);
 
         let tag = |v: u8| match v {
@@ -112,12 +120,13 @@ impl HealthStats {
         let psu = tag(((cs >> 16) & 0xFF) as u8);
         let opto = tag(((cs >> 24) & 0xFF) as u8);
 
-        // Determine overall status
-        let status = if cs == 0 { "ok" } else { "degraded" };
+        // Determine overall status — degraded if any channel unhealthy
+        // or if there have been I²C errors
+        let status = if cs == 0 && errors == 0 { "ok" } else { "degraded" };
 
         format!(
-            r#"{{"status":"{}","uptime_s":{},"last_cycle_ms":{:.2},"i2c_errors":{},"channels":{{"ma":"{}","volt":"{}","psu":"{}","opto":"{}"}}}}"#,
-            status, uptime, cycle_ms, errors, ma, volt, psu, opto
+            r#"{{"status":"{}","uptime_s":{},"last_cycle_ms":{:.2},"i2c_errors":{},"i2c_recoveries":{},"channels":{{"ma":"{}","volt":"{}","psu":"{}","opto":"{}"}}}}"#,
+            status, uptime, cycle_ms, errors, recoveries, ma, volt, psu, opto
         )
     }
 }
@@ -187,6 +196,7 @@ mod tests {
         assert!(json.contains(r#""status":"ok""#));
         assert!(json.contains(r#""last_cycle_ms":0.00"#));
         assert!(json.contains(r#""i2c_errors":0"#));
+        assert!(json.contains(r#""i2c_recoveries":0"#));
         assert!(json.contains(r#""ma":"OK""#));
         assert!(json.contains(r#""volt":"OK""#));
         assert!(json.contains(r#""psu":"OK""#));
@@ -209,6 +219,16 @@ mod tests {
         stats.inc_i2c_errors();
         let json = stats.to_json();
         assert!(json.contains(r#""i2c_errors":3"#));
+        // Errors cause degraded status
+        assert!(json.contains(r#""status":"degraded""#));
+    }
+
+    #[test]
+    fn json_reflects_recovery_count() {
+        let stats = HealthStats::new();
+        stats.set_recovery_count(2);
+        let json = stats.to_json();
+        assert!(json.contains(r#""i2c_recoveries":2"#));
     }
 
     #[test]

@@ -366,7 +366,7 @@ fn poll_loop(
             .as_mut()
             .and_then(|b| match b.read_4_20ma_inputs() {
                 Ok(v) => { watchdog.record_success(); Some(ch_wd.update_ma(v)) }
-                Err(_) => { if watchdog.record_failure() { /* handled below */ } Some(ch_wd.fallback_ma()) }
+                Err(_) => { watchdog.record_failure(); health_stats.inc_i2c_errors(); Some(ch_wd.fallback_ma()) }
             })
             .unwrap_or_else(|| ch_wd.fallback_ma());
 
@@ -374,7 +374,7 @@ fn poll_loop(
             .as_mut()
             .and_then(|b| match b.read_0_10v_inputs() {
                 Ok(v) => { watchdog.record_success(); Some(ch_wd.update_volt(v)) }
-                Err(_) => { if watchdog.record_failure() { /* handled below */ } Some(ch_wd.fallback_volt()) }
+                Err(_) => { watchdog.record_failure(); health_stats.inc_i2c_errors(); Some(ch_wd.fallback_volt()) }
             })
             .unwrap_or_else(|| ch_wd.fallback_volt());
 
@@ -382,7 +382,7 @@ fn poll_loop(
             .as_mut()
             .and_then(|b| match b.read_system_voltage() {
                 Ok(v) => { watchdog.record_success(); Some(ch_wd.update_psu(v)) }
-                Err(_) => { if watchdog.record_failure() { /* handled below */ } Some(ch_wd.fallback_psu()) }
+                Err(_) => { watchdog.record_failure(); health_stats.inc_i2c_errors(); Some(ch_wd.fallback_psu()) }
             })
             .unwrap_or_else(|| ch_wd.fallback_psu());
 
@@ -390,7 +390,7 @@ fn poll_loop(
             .as_mut()
             .and_then(|b| match b.read_opto_inputs() {
                 Ok(v) => { watchdog.record_success(); Some(ch_wd.update_opto(v.0, v.1)) }
-                Err(_) => { if watchdog.record_failure() { /* handled below */ } Some(ch_wd.fallback_opto()) }
+                Err(_) => { watchdog.record_failure(); health_stats.inc_i2c_errors(); Some(ch_wd.fallback_opto()) }
             })
             .unwrap_or_else(|| ch_wd.fallback_opto());
 
@@ -473,6 +473,7 @@ fn poll_loop(
                         }
                         Err(e) => {
                             cache.invalidate_relay(i);
+                            health_stats.inc_i2c_errors();
                             error!("Relay {} write failed: {e:#}", ch);
                         }
                     }
@@ -496,6 +497,7 @@ fn poll_loop(
                         }
                         Err(e) => {
                             cache.invalidate_od(i);
+                            health_stats.inc_i2c_errors();
                             error!("OD output {} write failed: {e:#}", ch);
                         }
                     }
@@ -516,6 +518,7 @@ fn poll_loop(
                         }
                         Err(e) => {
                             cache.invalidate_v_out(i);
+                            health_stats.inc_i2c_errors();
                             error!("0-10V output {} write failed: {e:#}", ch);
                         }
                     }
@@ -533,6 +536,7 @@ fn poll_loop(
                         }
                         Err(e) => {
                             cache.invalidate_ma_out(i);
+                            health_stats.inc_i2c_errors();
                             error!("4-20mA output {} write failed: {e:#}", ch);
                         }
                     }
@@ -542,7 +546,7 @@ fn poll_loop(
 
         // 4. HEARTBEAT ────────────────────────────────────────────────
         if last_heartbeat.elapsed() >= heartbeat_duration {
-            log_heartbeat(&ma_inputs, &v_inputs, voltage, &opto_bits, &coils, &v_out_regs, &ma_out_regs, &ch_wd, relay_count);
+            log_heartbeat(&ma_inputs, &v_inputs, voltage, &opto_bits, &coils, &v_out_regs, &ma_out_regs, &ch_wd, relay_count, watchdog.recovery_count());
             last_heartbeat = Instant::now();
         }
 
@@ -550,6 +554,7 @@ fn poll_loop(
         let elapsed = cycle_start.elapsed();
         health_stats.set_cycle_time(elapsed.as_micros() as u64);
         health_stats.update_channel_status(&ch_wd);
+        health_stats.set_recovery_count(watchdog.recovery_count());
         debug!("I/O cycle: {:.2}ms", elapsed.as_secs_f64() * 1000.0);
         if elapsed < POLL_INTERVAL {
             std::thread::sleep(POLL_INTERVAL - elapsed);
@@ -575,6 +580,7 @@ fn log_heartbeat(
     ma_out_regs: &[u16; I4_20_OUT_CHANNELS],
     ch_wd: &ChannelWatchdog,
     relay_count: usize,
+    i2c_recoveries: u32,
 ) {
     let ma_str: String = ma_inputs
         .iter()
@@ -633,6 +639,9 @@ fn log_heartbeat(
     info!("OD OUT (1-4) : {od_str}");
     info!("V OUT  (1-4) : [{v_out_str}] V");
     info!("mA OUT (1-4) : [{ma_out_str}] mA");
+    if i2c_recoveries > 0 {
+        info!("I2C RECOVERIES: {i2c_recoveries}");
+    }
     info!("------------------------");
 }
 

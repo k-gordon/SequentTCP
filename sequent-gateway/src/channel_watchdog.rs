@@ -30,7 +30,6 @@ pub enum Channel {
 
 impl Channel {
     /// All channel variants, for iteration.
-    #[allow(dead_code)]
     pub const ALL: [Channel; 4] = [Channel::Ma, Channel::Volt, Channel::Psu, Channel::Opto];
 
     fn label(self) -> &'static str {

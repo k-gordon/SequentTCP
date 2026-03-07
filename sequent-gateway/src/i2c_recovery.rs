@@ -107,7 +107,6 @@ impl I2cWatchdog {
     }
 
     /// Total number of recoveries performed since startup.
-    #[allow(dead_code)]
     pub fn recovery_count(&self) -> u32 {
         self.recovery_count
     }
