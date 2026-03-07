@@ -324,10 +324,10 @@
 **so that** a single sensor timeout doesn't block the entire poll loop.
 
 **Acceptance Criteria:**
-- [ ] Per-channel read timeout (default 50 ms)
-- [ ] If a read exceeds the timeout, return last-known-good value and log at `WARN`
-- [ ] Consecutive timeout counter per channel; after N failures, mark channel as `FAULT` in heartbeat
-- [ ] Optionally tie into Story 12 (bus reset) if all channels fault simultaneously
+- [x] Per-channel read timeout (default 50 ms)
+- [x] If a read exceeds the timeout, return last-known-good value and log at `WARN`
+- [x] Consecutive timeout counter per channel; after N failures, mark channel as `FAULT` in heartbeat
+- [x] Optionally tie into Story 12 (bus reset) if all channels fault simultaneously
 
 ---
 

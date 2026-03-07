@@ -67,4 +67,8 @@ pub struct Cli {
     /// Number of rotated log files to retain (default: 7)
     #[arg(long, default_value_t = 7)]
     pub log_retention: usize,
+
+    /// Consecutive per-channel read failures before marking FAULT (0 = disabled)
+    #[arg(long, default_value_t = 5)]
+    pub channel_fault_threshold: u32,
 }

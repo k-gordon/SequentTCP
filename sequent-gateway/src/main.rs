@@ -1,5 +1,6 @@
 mod board_def;
 mod cache;
+mod channel_watchdog;
 mod cli;
 mod databank;
 mod hal;
@@ -14,10 +15,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use clap::Parser;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use board_def::BoardDef;
 use cache::OutputCache;
+use channel_watchdog::ChannelWatchdog;
 use cli::Cli;
 use databank::DataBank;
 use hal::megaind::MegaIndBoard;
@@ -167,6 +169,7 @@ async fn main() -> Result<()> {
         let map_opto = args.map_opto_to_reg;
         let log_interval = args.log_interval;
         let i2c_reset_threshold = args.i2c_reset_threshold;
+        let channel_fault_threshold = args.channel_fault_threshold;
 
         std::thread::Builder::new()
             .name("i2c-poll".into())
@@ -181,6 +184,7 @@ async fn main() -> Result<()> {
                     megaind_def,
                     relay16_def,
                     i2c_reset_threshold,
+                    channel_fault_threshold,
                 );
             })?
     };
@@ -229,6 +233,7 @@ fn poll_loop(
     megaind_def: BoardDef,
     relay16_def: BoardDef,
     i2c_reset_threshold: u32,
+    channel_fault_threshold: u32,
 ) {
     // ── Initialise hardware ──────────────────────────────────────────
     let mut ind_board = match MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def) {
@@ -254,6 +259,7 @@ fn poll_loop(
 
     let mut cache = OutputCache::new();
     let mut watchdog = I2cWatchdog::new(i2c_reset_threshold);
+    let mut ch_wd = ChannelWatchdog::new(channel_fault_threshold);
     let mut last_heartbeat = Instant::now();
     let heartbeat_duration = Duration::from_secs(log_interval);
 
@@ -271,37 +277,45 @@ fn poll_loop(
         let ma_inputs = ind_board
             .as_mut()
             .and_then(|b| match b.read_4_20ma_inputs() {
-                Ok(v) => { watchdog.record_success(); Some(v) }
-                Err(_) => { if watchdog.record_failure() { /* handled below */ } None }
+                Ok(v) => { watchdog.record_success(); Some(ch_wd.update_ma(v)) }
+                Err(_) => { if watchdog.record_failure() { /* handled below */ } Some(ch_wd.fallback_ma()) }
             })
-            .unwrap_or([0.0; I4_20_IN_CHANNELS]);
+            .unwrap_or_else(|| ch_wd.fallback_ma());
 
         let v_inputs = ind_board
             .as_mut()
             .and_then(|b| match b.read_0_10v_inputs() {
-                Ok(v) => { watchdog.record_success(); Some(v) }
-                Err(_) => { if watchdog.record_failure() { /* handled below */ } None }
+                Ok(v) => { watchdog.record_success(); Some(ch_wd.update_volt(v)) }
+                Err(_) => { if watchdog.record_failure() { /* handled below */ } Some(ch_wd.fallback_volt()) }
             })
-            .unwrap_or([0.0; U0_10_IN_CHANNELS]);
+            .unwrap_or_else(|| ch_wd.fallback_volt());
 
         let voltage = ind_board
             .as_mut()
             .and_then(|b| match b.read_system_voltage() {
-                Ok(v) => { watchdog.record_success(); Some(v) }
-                Err(_) => { if watchdog.record_failure() { /* handled below */ } None }
+                Ok(v) => { watchdog.record_success(); Some(ch_wd.update_psu(v)) }
+                Err(_) => { if watchdog.record_failure() { /* handled below */ } Some(ch_wd.fallback_psu()) }
             })
-            .unwrap_or(0.0);
+            .unwrap_or_else(|| ch_wd.fallback_psu());
 
         let (opto_val, opto_bits) = ind_board
             .as_mut()
             .and_then(|b| match b.read_opto_inputs() {
-                Ok(v) => { watchdog.record_success(); Some(v) }
-                Err(_) => { if watchdog.record_failure() { /* handled below */ } None }
+                Ok(v) => { watchdog.record_success(); Some(ch_wd.update_opto(v.0, v.1)) }
+                Err(_) => { if watchdog.record_failure() { /* handled below */ } Some(ch_wd.fallback_opto()) }
             })
-            .unwrap_or((0, [false; OPTO_CHANNELS]));
+            .unwrap_or_else(|| ch_wd.fallback_opto());
 
         // ── I²C bus recovery check ──────────────────────────────────
-        if watchdog.consecutive_failures() >= i2c_reset_threshold && i2c_reset_threshold > 0 {
+        // Trigger if bus-level watchdog hits threshold OR all channels fault
+        let bus_recovery_needed =
+            (watchdog.consecutive_failures() >= i2c_reset_threshold && i2c_reset_threshold > 0)
+            || ch_wd.all_faulted();
+
+        if bus_recovery_needed {
+            if ch_wd.all_faulted() {
+                warn!("All I/O channels in FAULT — triggering bus recovery");
+            }
             if watchdog.attempt_recovery() {
                 // Re-open I²C device file descriptors
                 ind_board = MegaIndBoard::new(I2C_BUS, ind_stack, &megaind_def).ok();
@@ -391,7 +405,7 @@ fn poll_loop(
 
         // 4. HEARTBEAT ────────────────────────────────────────────────
         if last_heartbeat.elapsed() >= heartbeat_duration {
-            log_heartbeat(&ma_inputs, &v_inputs, voltage, &opto_bits, &coils);
+            log_heartbeat(&ma_inputs, &v_inputs, voltage, &opto_bits, &coils, &ch_wd);
             last_heartbeat = Instant::now();
         }
 
@@ -410,13 +424,15 @@ fn poll_loop(
 // Heartbeat
 // ════════════════════════════════════════════════════════════════════════
 
-/// Log a full system heartbeat matching the Python gateway format.
+/// Log a full system heartbeat matching the Python gateway format,
+/// with per-channel health status from the channel watchdog.
 fn log_heartbeat(
     ma_inputs: &[f32; I4_20_IN_CHANNELS],
     v_inputs: &[f32; U0_10_IN_CHANNELS],
     voltage: f32,
     opto_bits: &[bool; OPTO_CHANNELS],
     coils: &[bool],
+    ch_wd: &ChannelWatchdog,
 ) {
     let ma_str: String = ma_inputs
         .iter()
@@ -457,10 +473,10 @@ fn log_heartbeat(
         .collect();
 
     info!("--- SYSTEM HEARTBEAT ---");
-    info!("POWER: {voltage:.2}V");
-    info!("4-20mA (1-8) : [{ma_str}] mA");
-    info!("0-10V  (1-4) : [{v_str}] V");
-    info!("OPTO INPUTS  : {opto_str} (Binary)");
+    info!("POWER: {voltage:.2}V [{}]", ch_wd.status_tag(channel_watchdog::Channel::Psu));
+    info!("4-20mA (1-8) : [{ma_str}] mA [{}]", ch_wd.status_tag(channel_watchdog::Channel::Ma));
+    info!("0-10V  (1-4) : [{v_str}] V [{}]", ch_wd.status_tag(channel_watchdog::Channel::Volt));
+    info!("OPTO INPUTS  : {opto_str} (Binary) [{}]", ch_wd.status_tag(channel_watchdog::Channel::Opto));
     info!("RELAYS (1-16): {relay_str}");
     info!("OD OUT (1-4) : {od_str}");
     info!("------------------------");
