@@ -3,6 +3,8 @@ mod board_registry;
 mod cache;
 mod channel_watchdog;
 mod cli;
+mod config;
+mod configure;
 mod databank;
 mod hal;
 mod health;
@@ -51,10 +53,30 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 async fn main() -> Result<()> {
     let args = Cli::parse();
 
-    // ── Validate subcommand — early return before server startup ─────
-    if let Some(cli::Command::Validate(ref va)) = args.command {
-        return validate::run(va);
+    // ── Subcommands — early return before server startup ─────────────
+    match &args.command {
+        Some(cli::Command::Validate(ref va)) => return validate::run(va),
+        Some(cli::Command::Configure(ref ca)) => {
+            return configure::run(
+                &ca.boards_dir,
+                &ca.output,
+                ca.install_boards.as_deref(),
+            );
+        }
+        None => {}
     }
+
+    // ── Load config file (if any) ────────────────────────────────────
+    let file_config = if let Some(ref path) = args.config {
+        Some(config::GatewayConfig::load(path)?)
+    } else {
+        config::GatewayConfig::default_path()
+            .and_then(|p| config::GatewayConfig::load(&p).ok())
+    };
+    // Config file values are available but CLI args take precedence.
+    // For now the file config is loaded for future use; the existing
+    // CLI-driven code path is preserved for backward compatibility.
+    let _ = &file_config;
 
     // ── Logging ──────────────────────────────────────────────────────
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()

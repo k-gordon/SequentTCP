@@ -1,7 +1,7 @@
-# SequentTCP — Modbus TCP ↔ I²C Gateway
+# SequentTCP - a Modbus TCP ↔ I²C Gateway
 
 A high-performance Modbus TCP gateway for **Sequent Microsystems** Raspberry Pi HATs, written in Rust.  
-It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware — relays, analog I/O, opto-isolated inputs, and open-drain outputs — over standard Modbus registers.
+It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware (relays, analog I/O, opto-isolated inputs, and open-drain outputs) over standard Modbus registers.
 
 ## Supported Hardware
 
@@ -17,14 +17,14 @@ It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardwa
 
 | Register Type | Address | Description |
 |---|---|---|
-| **Coils** (R/W) | 0–15 | Relay Board — Relays 1–16 (or 1–8 for 8-Relay) |
-| **Coils** (R/W) | 16–19 | Industrial Board — Open Drain Outputs 1–4 |
-| **Discrete Inputs** (RO) | 0–7 | Industrial Board — Opto-Inputs 1–8 |
-| **Holding Registers** (RO) | 0–7 | Industrial Board — 4-20 mA Inputs (mA × 100) |
-| **Holding Registers** (RO) | 8 | Industrial Board — PSU Voltage (V × 100) |
-| **Holding Registers** (RO) | 10–13 | Industrial Board — 0-10 V Inputs (V × 100) |
-| **Holding Registers** (R/W) | 16–19 | Industrial Board — 0-10 V Outputs (V × 100) |
-| **Holding Registers** (R/W) | 20–23 | Industrial Board — 4-20 mA Outputs (mA × 100) |
+| **Coils** (R/W) | 0–15 | Relay Board - Relays 1–16 (or 1–8 for 8-Relay) |
+| **Coils** (R/W) | 16–19 | Industrial Board - Open Drain Outputs 1–4 |
+| **Discrete Inputs** (RO) | 0–7 | Industrial Board - Opto-Inputs 1–8 |
+| **Holding Registers** (RO) | 0–7 | Industrial Board - 4-20 mA Inputs (mA × 100) |
+| **Holding Registers** (RO) | 8 | Industrial Board - PSU Voltage (V × 100) |
+| **Holding Registers** (RO) | 10–13 | Industrial Board - 0-10 V Inputs (V × 100) |
+| **Holding Registers** (R/W) | 16–19 | Industrial Board - 0-10 V Outputs (V × 100) |
+| **Holding Registers** (R/W) | 20–23 | Industrial Board - 4-20 mA Outputs (mA × 100) |
 | **Holding Registers** (RO) | 24 | Relay read-back bitmask (diagnostic, updated every `--relay-verify-interval` ticks) |
 
 ## Quick Start
@@ -32,7 +32,7 @@ It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardwa
 ### Prerequisites
 
 - Raspberry Pi with Sequent HATs installed and I²C enabled
-- Rust toolchain (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+- If compiling from source, Rust toolchain (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 
 ### Build & Run
 
@@ -102,7 +102,7 @@ curl http://localhost:8080/health
 ### Hardware Validation (on-Pi)
 
 The gateway includes a self-contained `validate` subcommand that exercises live
-hardware and produces a structured PASS/FAIL report — no Python or external
+hardware and produces a structured PASS/FAIL report - no Python or external
 tools required.
 
 ```bash
@@ -152,20 +152,20 @@ The gateway runs a 10 Hz polling loop with direct I²C register access (< 1 ms p
 
 ### Key Features
 
-- **Direct I²C** — no subprocess shelling, < 1 ms I/O cycle
-- **Write-on-change caching** — only touches the bus when outputs actually change
-- **Analog output write-back** — 0-10 V and 4-20 mA outputs via holding registers
-- **Multi-slave addressing** — route boards to different Modbus unit IDs
-- **I²C bus recovery** — automatic GPIO-level reset on hung bus
-- **Channel watchdog** — per-channel health tracking with last-known-good fallback
-- **Rotating file logs** — structured tracing with optional log directory
-- **Health endpoint** — lightweight HTTP/JSON status for monitoring dashboards
-- **Dynamic board selection** — `SequentBoard` trait for runtime HAL introspection
-- **Single static binary** — no runtime dependencies on the Pi
+- **Direct I²C** - no subprocess shelling, < 1 ms I/O cycle
+- **Write-on-change caching** - only touches the bus when outputs actually change
+- **Analog output write-back** - 0-10 V and 4-20 mA outputs via holding registers
+- **Multi-slave addressing** - route boards to different Modbus unit IDs
+- **I²C bus recovery** - automatic GPIO-level reset on hung bus
+- **Channel watchdog** - per-channel health tracking with last-known-good fallback
+- **Rotating file logs** - structured tracing with optional log directory
+- **Health endpoint** - lightweight HTTP/JSON status for monitoring dashboards
+- **Dynamic board selection** - `SequentBoard` trait for runtime HAL introspection
+- **Single static binary** - no runtime dependencies on the Pi
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the project history and completed milestones.
+See [STORIES.md](STORIES.md) for the project history and completed milestones.
 
 ## License
 

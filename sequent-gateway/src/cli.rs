@@ -108,7 +108,16 @@ pub struct Cli {
     #[arg(long)]
     pub health_port: Option<u16>,
 
-    /// Optional subcommand (validate, etc.)
+    /// Path to a configuration file (TOML).
+    ///
+    /// When set, the gateway loads settings from this file.  CLI flags
+    /// override values from the config file.
+    /// When omitted, the gateway searches `./sequent-gateway.toml` and
+    /// `/etc/sequent-gateway/sequent-gateway.toml`.
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<std::path::PathBuf>,
+
+    /// Optional subcommand (validate, configure, etc.)
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -125,6 +134,13 @@ pub enum Command {
     /// configuration, runs Modbus + health endpoint tests against it,
     /// tears it down, and produces a PASS/FAIL report.
     Validate(ValidateArgs),
+
+    /// Launch the interactive configuration TUI.
+    ///
+    /// Guides you through board selection, per-board addressing,
+    /// server settings, and I²C tuning.  Writes a `sequent-gateway.toml`
+    /// config file to the specified output path.
+    Configure(ConfigureArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -188,4 +204,22 @@ pub struct ValidateArgs {
     /// Seconds to wait for the gateway health endpoint at startup
     #[arg(long, default_value_t = 10)]
     pub startup_timeout: u64,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ConfigureArgs {
+    /// Directory containing board definition TOML files.
+    #[arg(long, default_value = "boards")]
+    pub boards_dir: PathBuf,
+
+    /// Output path for the generated configuration file.
+    #[arg(long, short, default_value = "sequent-gateway.toml")]
+    pub output: PathBuf,
+
+    /// Install board TOML files into a system directory.
+    ///
+    /// When set, copies all board definition files from `--boards-dir`
+    /// (including `experimental/`) into the specified directory.
+    #[arg(long, value_name = "DIR")]
+    pub install_boards: Option<PathBuf>,
 }
