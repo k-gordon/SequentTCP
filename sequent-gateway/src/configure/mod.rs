@@ -9,6 +9,14 @@
 //! 5. **Review & save** — preview the generated TOML and write to disk
 //!
 //! The TUI works on both local terminals and SSH sessions.
+//!
+//! ## Install detection
+//!
+//! On first run, if the binary is not installed to `/usr/local/bin/`,
+//! the wizard offers to copy itself there (along with board definitions
+//! into `/etc/sequent-gateway/boards/`).  After install it re-launches
+//! from the system path so all subsequent commands use the installed
+//! binary.
 
 pub mod app;
 pub mod ui;
@@ -28,6 +36,15 @@ use crate::config::GatewayConfig;
 
 use app::{App, Screen};
 
+/// Standard system install path for the gateway binary.
+#[cfg(target_os = "linux")]
+const INSTALL_BIN: &str = "/usr/local/bin/sequent-gateway";
+/// Standard system path for board definitions.
+const INSTALL_BOARDS_DIR: &str = "/etc/sequent-gateway/boards";
+/// Standard system path for the configuration file.
+#[cfg(target_os = "linux")]
+const INSTALL_CONFIG_DIR: &str = "/etc/sequent-gateway";
+
 // ════════════════════════════════════════════════════════════════════════
 // Public entry point
 // ════════════════════════════════════════════════════════════════════════
@@ -42,8 +59,36 @@ pub fn run(
     output_path: &Path,
     install_boards: Option<&Path>,
 ) -> Result<()> {
+    // ── Install detection (Linux only) ───────────────────────────────
+    #[cfg(target_os = "linux")]
+    if let Some(relaunch) = check_install(boards_dir, output_path, install_boards)? {
+        return relaunch;
+    }
+
+    run_tui(boards_dir, output_path, install_boards)
+}
+
+/// The actual TUI flow, called after install detection.
+fn run_tui(
+    boards_dir: &Path,
+    output_path: &Path,
+    install_boards: Option<&Path>,
+) -> Result<()> {
     // ── Discover boards ──────────────────────────────────────────────
-    let available = discover_all_boards(boards_dir)?;
+    // Try the supplied boards_dir first; if empty, fall back to the
+    // system-installed boards directory.
+    let effective_boards_dir = if boards_dir.is_dir() && has_toml_files(boards_dir) {
+        boards_dir.to_path_buf()
+    } else {
+        let sys = std::path::PathBuf::from(INSTALL_BOARDS_DIR);
+        if sys.is_dir() && has_toml_files(&sys) {
+            sys
+        } else {
+            boards_dir.to_path_buf() // will produce a clear error below
+        }
+    };
+
+    let available = discover_all_boards(&effective_boards_dir)?;
 
     if available.is_empty() {
         anyhow::bail!("No board TOML files found in {}", boards_dir.display());
@@ -91,6 +136,143 @@ pub fn run(
     }
 
     Ok(())
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Install detection
+// ════════════════════════════════════════════════════════════════════════
+
+/// Check whether the binary is installed to the system path.
+///
+/// If not, prompts the user to install it.  Returns:
+/// - `Ok(None)` → not installed but user declined, or already installed
+///   — continue to the TUI.
+/// - `Ok(Some(Ok(())))` → installed and re-launched from system path;
+///   the caller should return this result.
+/// - `Err(_)` → install failed.
+#[cfg(target_os = "linux")]
+fn check_install(
+    boards_dir: &Path,
+    output_path: &Path,
+    install_boards: Option<&Path>,
+) -> Result<Option<Result<()>>> {
+    use std::io::{self, BufRead, Write};
+    use anyhow::Context;
+
+    let current_exe = std::env::current_exe()
+        .context("cannot determine own executable path")?;
+    let install_path = std::path::Path::new(INSTALL_BIN);
+
+    // Already running from the installed location — nothing to do
+    if current_exe == install_path {
+        return Ok(None);
+    }
+
+    // Check if an installed binary already exists and is up to date
+    if install_path.exists() {
+        // Compare file sizes as a quick staleness check
+        let src_meta = std::fs::metadata(&current_exe).ok();
+        let dst_meta = std::fs::metadata(install_path).ok();
+        let same_size = match (src_meta, dst_meta) {
+            (Some(s), Some(d)) => s.len() == d.len(),
+            _ => false,
+        };
+        if same_size {
+            // Installed binary looks current — skip the prompt
+            return Ok(None);
+        }
+    }
+
+    println!();
+    println!("  ╔══════════════════════════════════════════════════════════╗");
+    println!("  ║  sequent-gateway is not installed to /usr/local/bin/    ║");
+    println!("  ╚══════════════════════════════════════════════════════════╝");
+    println!();
+    println!("  Current:   {}", current_exe.display());
+    println!("  Install to: {INSTALL_BIN}");
+    println!("  Boards to:  {INSTALL_BOARDS_DIR}");
+    println!("  Config dir: {INSTALL_CONFIG_DIR}");
+    println!();
+    print!("  Install now? [Y/n] ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+    let answer = input.trim().to_lowercase();
+
+    if !answer.is_empty() && answer != "y" && answer != "yes" {
+        println!("  Skipped install — continuing from current location.\n");
+        return Ok(None);
+    }
+
+    // ── Perform installation ─────────────────────────────────────────
+    println!();
+
+    // 1. Copy binary
+    std::fs::copy(&current_exe, INSTALL_BIN)
+        .with_context(|| format!("Failed to copy binary to {INSTALL_BIN}"))?;
+
+    // Ensure executable permission
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(INSTALL_BIN, perms)?;
+    }
+    println!("  ✅ Binary installed to {INSTALL_BIN}");
+
+    // 2. Install board definitions
+    let boards_dest = std::path::Path::new(INSTALL_BOARDS_DIR);
+    install_board_files(boards_dir, boards_dest)?;
+    println!("  📦 Board definitions installed to {INSTALL_BOARDS_DIR}");
+
+    // 3. Create config directory
+    std::fs::create_dir_all(INSTALL_CONFIG_DIR)?;
+    println!("  📁 Config directory: {INSTALL_CONFIG_DIR}");
+
+    println!();
+    println!("  Restarting from {INSTALL_BIN} ...");
+    println!();
+
+    // ── Re-launch from the installed binary ──────────────────────────
+    let mut args: Vec<String> = vec![
+        INSTALL_BIN.to_string(),
+        "configure".to_string(),
+        "--boards-dir".to_string(),
+        INSTALL_BOARDS_DIR.to_string(),
+        "--output".to_string(),
+        output_path.to_string_lossy().into(),
+    ];
+
+    if let Some(ib) = install_boards {
+        args.push("--install-boards".to_string());
+        args.push(ib.to_string_lossy().into());
+    }
+
+    let status = std::process::Command::new(INSTALL_BIN)
+        .args(&args[1..])
+        .status()
+        .with_context(|| format!("Failed to relaunch {INSTALL_BIN}"))?;
+
+    if status.success() {
+        Ok(Some(Ok(())))
+    } else {
+        Ok(Some(anyhow::bail!(
+            "Re-launched gateway exited with: {status}"
+        )))
+    }
+}
+
+/// Check if a directory contains any `.toml` files.
+fn has_toml_files(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|e| e.path().extension().map_or(false, |ext| ext == "toml"))
+        })
+        .unwrap_or(false)
 }
 
 // ════════════════════════════════════════════════════════════════════════

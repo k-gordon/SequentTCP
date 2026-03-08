@@ -1,15 +1,57 @@
-# SequentTCP - a Modbus TCP ↔ I²C Gateway
+# SequentTCP — Modbus TCP ↔ I²C Gateway
 
 A high-performance Modbus TCP gateway for **Sequent Microsystems** Raspberry Pi HATs, written in Rust.  
 It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware (relays, analog I/O, opto-isolated inputs, and open-drain outputs) over standard Modbus registers.
 
+## Getting Started
+
+The fastest way to set up the gateway is the **interactive configuration TUI**.
+It walks you through board selection, addressing, and server settings — then
+writes a ready-to-use `sequent-gateway.toml` config file.
+
+```bash
+# Build (first time only)
+cd sequent-gateway
+cargo build --release
+
+# Launch the configuration wizard
+sudo ./target/release/sequent-gateway configure
+```
+
+If the binary isn't installed to `/usr/local/bin/` yet, the TUI will detect
+this and offer to install it for you (copies the binary and board definitions
+to `/etc/sequent-gateway/`).  After install it re-launches from the system
+path automatically.
+
+### What the TUI does
+
+| Step | Screen | What you configure |
+|------|--------|--------------------|
+| 1 | Board Selection | Pick from all 34 board types (3 production + 31 experimental) |
+| 2 | Board Config | Per-board I²C stack ID [0–7] and Modbus slave ID [1–247] |
+| 3 | Server Settings | Host, port, health endpoint, addressing mode |
+| 4 | I²C & Logging | Recovery thresholds, relay verification, log rotation |
+| 5 | Review & Save | Preview the generated TOML, then write to disk |
+
+### After configuration
+
+```bash
+# Start the gateway using the config file
+sudo sequent-gateway --config /etc/sequent-gateway/sequent-gateway.toml
+
+# Or install as a systemd service (see below)
+```
+
 ## Supported Hardware
 
-| Board | Stack ID | `--board` flag |
+| Board | Default Stack | `--board` flag |
 |---|---|---|
-| [Sequent Mega-Industrial HAT](https://sequentmicrosystems.com/) | 1 (default) | `megaind` |
-| [Sequent 16-Relay HAT](https://sequentmicrosystems.com/) | 0 (default) | `relay16` |
+| [Sequent Mega-Industrial HAT](https://sequentmicrosystems.com/) | 1 | `megaind` |
+| [Sequent 16-Relay HAT](https://sequentmicrosystems.com/) | 0 | `relay16` |
 | [Sequent 8-Relay HAT](https://sequentmicrosystems.com/) | 0 | `relay8` |
+
+Plus **31 experimental board definitions** in `boards/experimental/` — the TUI
+shows all of them with their capabilities.
 
 ## Modbus Memory Map
 
@@ -27,7 +69,10 @@ It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardwa
 | **Holding Registers** (R/W) | 20–23 | Industrial Board - 4-20 mA Outputs (mA × 100) |
 | **Holding Registers** (RO) | 24 | Relay read-back bitmask (diagnostic, updated every `--relay-verify-interval` ticks) |
 
-## Quick Start
+## Quick Start (manual / headless)
+
+> **Prefer the TUI?** Run `sudo sequent-gateway configure` instead — it handles
+> everything below automatically.
 
 ### Prerequisites
 
@@ -57,30 +102,36 @@ sudo ./target/release/sequent-gateway --board relay16
 
 ### CLI Options
 
+> Most of these are set automatically by the TUI wizard.  You only need
+> CLI flags for headless / scriptable deployments.
+
 | Flag | Default | Description |
 |---|---|---|
+| `--config` | auto-detect | Path to `sequent-gateway.toml` config file |
 | `--host` | `0.0.0.0` | IP address to bind |
 | `--port` | `502` | Modbus TCP port |
 | `--ind-stack` | `1` | Industrial HAT I²C stack ID |
 | `--relay-stack` | `0` | Relay HAT I²C stack ID |
-| `--slave-id` | `1` | Modbus slave/unit ID |
 | `--board` | `megaind,relay16` | Board types to load (repeatable) |
-| `--health-port` | `8080` | HTTP health endpoint port |
-| `--log-dir` | (none) | Directory for rotating log files |
+| `--health-port` | *(disabled)* | HTTP health endpoint port |
+| `--log-file` | *(none)* | Path for daily-rotated log files |
+| `--single-slave` | `false` | Flat Modbus addressing mode |
 
 ### Install as a systemd Service
+
+> **Quickest path:** Run `sudo sequent-gateway configure --install-boards /etc/sequent-gateway/boards`
+> — it installs the binary, board definitions, and writes the config file in one step.
+
+Manual install:
 
 ```bash
 # Install binary
 sudo cp target/release/sequent-gateway /usr/local/bin/
 
-# Install config
+# Install config & boards
 sudo mkdir -p /etc/sequent-gateway
-sudo cp deploy/sequent-gateway.env /etc/sequent-gateway/
+sudo cp sequent-gateway.toml /etc/sequent-gateway/
 sudo cp -r boards/ /etc/sequent-gateway/boards/
-
-# Edit configuration to match your hardware
-sudo nano /etc/sequent-gateway/sequent-gateway.env
 
 # Install and start service
 sudo cp deploy/sequent-gateway.service /etc/systemd/system/
