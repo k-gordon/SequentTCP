@@ -198,18 +198,18 @@
 
 **As a** developer,
 **I want** to cross-compile the binary and validate it on the Raspberry Pi,
-**so that** I can confirm feature parity with the Python gateway before cutover.
+**so that** I can confirm correctness against real hardware.
 
 **Acceptance Criteria:**
 - [ ] Binary cross-compiles with `cross build --release --target aarch64-unknown-linux-gnu`
 - [x] Binary runs on Raspberry Pi 4 (64-bit Raspberry Pi OS)
-- [ ] Side-by-side test: run Python gateway and Rust gateway on same hardware, compare Modbus register reads from an external client
+- [x] ~~Side-by-side test: run Python gateway and Rust gateway on same hardware~~ — *Superseded by `sequent-gateway validate` (37/37 HW tests ✅ 2026-03-07); Python gateway removed*
 - [x] All 8 × 4-20 mA channels read correctly  *(HW-11/12 ✅ 2026-03-06 — drift < 0.01 mA)*
 - [x] All 4 × 0-10 V channels read correctly  *(HW-13 ✅ 2026-03-06)*
 - [x] Opto inputs match  *(HW-15 ✅ 2026-03-06)*
 - [x] All 16 relays toggle correctly via coil writes  *(HW-20–26 ✅ 2026-03-06)*
 - [x] All 4 OD outputs toggle correctly  *(HW-30–33 ✅ 2026-03-06)*
-- [x] Benchmark: full I/O cycle time < 15 ms  *(HW-10/53 ✅ 2026-03-06 — avg 9.0 ms, max 10.5 ms; 10× faster than Python)*
+- [x] Benchmark: full I/O cycle time < 15 ms  *(HW-10/53 ✅ 2026-03-06 — avg 9.0 ms, max 10.5 ms)*
 
 ---
 
