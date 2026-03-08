@@ -721,8 +721,8 @@ def run_scenario(
 
     try:
         with GatewayProcess(cfg, gateway_bin) as _gw:
-            # Allow a brief settling period after health responds
-            time.sleep(0.5)
+            # Settling period — ensures uptime_s >= 1 for HH-04
+            time.sleep(1.5)
 
             # ── Health (always) ───────────────────────────────────────
             if cfg.test_health:

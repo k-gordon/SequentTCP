@@ -166,8 +166,8 @@ fn run_scenario(
         }
     }
 
-    // Brief settling period
-    thread::sleep(Duration::from_millis(500));
+    // Settling period — ensures uptime_s >= 1 for HH-04
+    thread::sleep(Duration::from_millis(1500));
 
     // ── Run tests ────────────────────────────────────────────────────
     let test_result = run_tests(cfg, results, args);
