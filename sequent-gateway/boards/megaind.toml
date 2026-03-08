@@ -44,3 +44,81 @@ diag_5v = 0x75          # 5V rail voltage (2B LE, mV)
 revision_major = 0x78   # Firmware major version
 revision_minor = 0x79   # Firmware minor version
 voltage_scale = 1000.0  # Raw register value ÷ scale = physical value
+
+# ─── I/O Group Descriptors ────────────────────────────────────────────
+# These drive the generic HAL driver.  Each group describes an I²C
+# operation and its mapping into the Modbus data bank.
+
+[[io_group]]
+name = "4-20mA inputs"
+direction = "input"
+op = "read_u16_le"
+register = 0x2C
+channels = 8
+i2c_scale = 1000.0
+modbus_scale = 100.0
+modbus_region = "holding_register"
+modbus_offset = 0
+
+[[io_group]]
+name = "PSU voltage"
+direction = "input"
+op = "read_u16_le"
+register = 0x73
+channels = 1
+i2c_scale = 1000.0
+modbus_scale = 100.0
+modbus_region = "holding_register"
+modbus_offset = 8
+
+[[io_group]]
+name = "0-10V inputs"
+direction = "input"
+op = "read_u16_le"
+register = 0x1C
+channels = 4
+i2c_scale = 1000.0
+modbus_scale = 100.0
+modbus_region = "holding_register"
+modbus_offset = 10
+
+[[io_group]]
+name = "Opto inputs"
+direction = "input"
+op = "read_u8_bitmask"
+register = 0x03
+channels = 8
+modbus_region = "discrete_input"
+modbus_offset = 0
+
+[[io_group]]
+name = "OD outputs"
+direction = "output"
+op = "write_set_clr"
+register_set = 0x01
+register_clr = 0x02
+channels = 4
+modbus_region = "coil"
+modbus_offset = 16
+
+[[io_group]]
+name = "0-10V outputs"
+direction = "output"
+op = "write_u16_le"
+register = 0x04
+channels = 4
+i2c_scale = 1000.0
+modbus_scale = 100.0
+modbus_region = "holding_register"
+modbus_offset = 16
+
+[[io_group]]
+name = "4-20mA outputs"
+direction = "output"
+op = "write_u16_le"
+register = 0x0C
+channels = 4
+i2c_scale = 1000.0
+modbus_scale = 100.0
+modbus_region = "holding_register"
+modbus_offset = 20

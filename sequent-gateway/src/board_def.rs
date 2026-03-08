@@ -36,6 +36,8 @@ pub struct BoardDef {
     #[serde(default)]
     pub registers: RegisterMap,
     pub pca9535: Option<Pca9535Config>,
+    #[serde(default, rename = "io_group")]
+    pub io_groups: Vec<IoGroup>,
 }
 
 /// Board identity and protocol selection.
@@ -124,6 +126,80 @@ pub struct Pca9535Config {
     pub config_reg: u8,
 }
 
+/// I/O group descriptor — drives the generic HAL driver.
+///
+/// Each group describes a set of I²C channels with a specific protocol
+/// operation and their mapping into the Modbus data bank.  The HAL
+/// driver iterates these groups at runtime — no board-specific Rust
+/// code is needed.
+///
+/// # Supported operations
+///
+/// | `op` value          | Dir    | Description                             |
+/// |---------------------|--------|-----------------------------------------|
+/// | `read_u8_bitmask`   | input  | 1-byte bitmask → discrete inputs        |
+/// | `read_u16_bitmask`  | input  | 2-byte LE bitmask → discrete inputs     |
+/// | `read_u16_le`       | input  | N × 2-byte LE → holding registers       |
+/// | `write_set_clr`     | output | Channel number to SET/CLR register      |
+/// | `write_u16_le`      | output | N × 2-byte LE from holding registers    |
+/// | `pca9535_rmw_bit`   | output | Read-modify-write on 16-bit port        |
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IoGroup {
+    /// Human-readable name (for logging).
+    pub name: String,
+    /// Direction: `"input"` or `"output"`.
+    pub direction: String,
+    /// I²C protocol operation (see table above).
+    pub op: String,
+    /// Base register address (for most operations).
+    #[serde(default)]
+    pub register: Option<u8>,
+    /// SET register address (for `write_set_clr`).
+    #[serde(default)]
+    pub register_set: Option<u8>,
+    /// CLR register address (for `write_set_clr`).
+    #[serde(default)]
+    pub register_clr: Option<u8>,
+    /// Number of channels in this group.
+    pub channels: usize,
+    /// Raw I²C units per physical unit (e.g. 1000 for mV → V).
+    #[serde(default = "one")]
+    pub i2c_scale: f32,
+    /// Modbus register units per physical unit (e.g. 100 for V × 100).
+    #[serde(default = "one")]
+    pub modbus_scale: f32,
+    /// Target Modbus region: `"coil"`, `"discrete_input"`, or `"holding_register"`.
+    pub modbus_region: String,
+    /// Starting offset within the Modbus region.
+    pub modbus_offset: usize,
+    /// Channel-to-bit remapping table (for `pca9535_rmw_bit`).
+    #[serde(default)]
+    pub bit_remap: Option<Vec<u8>>,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+impl Default for IoGroup {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            direction: String::new(),
+            op: String::new(),
+            register: None,
+            register_set: None,
+            register_clr: None,
+            channels: 0,
+            i2c_scale: 1.0,
+            modbus_scale: 1.0,
+            modbus_region: String::new(),
+            modbus_offset: 0,
+            bit_remap: None,
+        }
+    }
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // Loading
 // ════════════════════════════════════════════════════════════════════════
@@ -141,6 +217,7 @@ impl BoardDef {
     /// Try to load from `path`; fall back to compiled defaults if missing
     /// **and** `allow_builtin` is true.  Otherwise bail with a helpful
     /// message telling the user where to put the TOML file.
+    #[allow(dead_code)] // used by configure TUI on Linux
     pub fn load_or_default(path: &Path, default: Self, allow_builtin: bool) -> Result<Self> {
         match Self::load(path) {
             Ok(def) => {
@@ -222,6 +299,7 @@ impl BoardDef {
                 voltage_scale: Some(1000.0),
             },
             pca9535: None,
+            io_groups: vec![],
         }
     }
 
@@ -258,6 +336,7 @@ impl BoardDef {
                 inport_reg: 0x00,
                 config_reg: 0x06,
             }),
+            io_groups: vec![],
         }
     }
 
@@ -292,6 +371,195 @@ impl BoardDef {
                 inport_reg: 0x00,
                 config_reg: 0x06,
             }),
+            io_groups: vec![],
+        }
+    }
+
+    /// Synthesize `[[io_group]]` descriptors from the legacy
+    /// `[channels]` + `[registers]` config.
+    ///
+    /// Called automatically by the generic HAL driver when
+    /// `io_groups` is empty.  Explicit `[[io_group]]` sections
+    /// in the TOML always take priority.
+    #[allow(dead_code)] // called from Linux-only GenericBoard::new()
+    pub fn synthesize_io_groups(&mut self) {
+        if !self.io_groups.is_empty() {
+            return;
+        }
+        match self.board.protocol.as_str() {
+            "pca9535" => self.synthesize_pca9535_groups(),
+            _ => self.synthesize_mcu_groups(),
+        }
+    }
+
+    fn synthesize_pca9535_groups(&mut self) {
+        let ch = &self.channels;
+
+        // Relay outputs
+        if let (Some(count), Some(ref pca)) = (ch.relays, &self.pca9535) {
+            if count > 0 {
+                let remap = ch.relay_remap.clone()
+                    .unwrap_or_else(|| (0..count).rev().map(|i| i as u8).collect());
+                self.io_groups.push(IoGroup {
+                    name: "Relays".into(),
+                    direction: "output".into(),
+                    op: "pca9535_rmw_bit".into(),
+                    register: Some(pca.outport_reg),
+                    channels: count,
+                    modbus_region: "coil".into(),
+                    bit_remap: Some(remap),
+                    ..IoGroup::default()
+                });
+            }
+        }
+
+        // Digital inputs (PCA9535 input port)
+        if let (Some(count), Some(ref pca)) = (ch.opto_inputs, &self.pca9535) {
+            if count > 0 {
+                self.io_groups.push(IoGroup {
+                    name: "Digital inputs".into(),
+                    direction: "input".into(),
+                    op: "read_u16_bitmask".into(),
+                    register: Some(pca.inport_reg),
+                    channels: count,
+                    modbus_region: "discrete_input".into(),
+                    ..IoGroup::default()
+                });
+            }
+        }
+    }
+
+    fn synthesize_mcu_groups(&mut self) {
+        let ch = self.channels.clone();
+        let r = self.registers.clone();
+        let scale = r.voltage_scale.unwrap_or(1000.0);
+
+        // ── Inputs ───────────────────────────────────────────────────
+
+        if let (Some(count), Some(reg)) = (ch.analog_4_20ma_inputs, r.i4_20_in) {
+            self.io_groups.push(IoGroup {
+                name: "4-20mA inputs".into(),
+                direction: "input".into(),
+                op: "read_u16_le".into(),
+                register: Some(reg),
+                channels: count,
+                i2c_scale: scale,
+                modbus_scale: 100.0,
+                modbus_region: "holding_register".into(),
+                modbus_offset: 0,
+                ..IoGroup::default()
+            });
+        }
+
+        if let Some(reg) = r.diag_24v {
+            self.io_groups.push(IoGroup {
+                name: "PSU voltage".into(),
+                direction: "input".into(),
+                op: "read_u16_le".into(),
+                register: Some(reg),
+                channels: 1,
+                i2c_scale: scale,
+                modbus_scale: 100.0,
+                modbus_region: "holding_register".into(),
+                modbus_offset: 8,
+                ..IoGroup::default()
+            });
+        }
+
+        if let (Some(count), Some(reg)) = (ch.analog_0_10v_inputs, r.u0_10_in) {
+            self.io_groups.push(IoGroup {
+                name: "0-10V inputs".into(),
+                direction: "input".into(),
+                op: "read_u16_le".into(),
+                register: Some(reg),
+                channels: count,
+                i2c_scale: scale,
+                modbus_scale: 100.0,
+                modbus_region: "holding_register".into(),
+                modbus_offset: 10,
+                ..IoGroup::default()
+            });
+        }
+
+        if let (Some(count), Some(reg)) = (ch.opto_inputs, r.opto_in) {
+            let op = if count > 8 { "read_u16_bitmask" } else { "read_u8_bitmask" };
+            self.io_groups.push(IoGroup {
+                name: "Opto inputs".into(),
+                direction: "input".into(),
+                op: op.into(),
+                register: Some(reg),
+                channels: count,
+                modbus_region: "discrete_input".into(),
+                ..IoGroup::default()
+            });
+        }
+
+        // ── Outputs ──────────────────────────────────────────────────
+
+        // MCU-type relays (set/clr protocol)
+        if let (Some(count), Some(set), Some(clr)) =
+            (ch.relays, r.relay_set, r.relay_clr)
+        {
+            if count > 0 {
+                self.io_groups.push(IoGroup {
+                    name: "Relays".into(),
+                    direction: "output".into(),
+                    op: "write_set_clr".into(),
+                    register_set: Some(set),
+                    register_clr: Some(clr),
+                    channels: count,
+                    modbus_region: "coil".into(),
+                    ..IoGroup::default()
+                });
+            }
+        }
+
+        if let (Some(count), Some(set), Some(clr)) =
+            (ch.od_outputs, r.relay_set, r.relay_clr)
+        {
+            if count > 0 {
+                self.io_groups.push(IoGroup {
+                    name: "OD outputs".into(),
+                    direction: "output".into(),
+                    op: "write_set_clr".into(),
+                    register_set: Some(set),
+                    register_clr: Some(clr),
+                    channels: count,
+                    modbus_region: "coil".into(),
+                    modbus_offset: 16,
+                    ..IoGroup::default()
+                });
+            }
+        }
+
+        if let (Some(count), Some(reg)) = (ch.analog_0_10v_outputs, r.u0_10_out) {
+            self.io_groups.push(IoGroup {
+                name: "0-10V outputs".into(),
+                direction: "output".into(),
+                op: "write_u16_le".into(),
+                register: Some(reg),
+                channels: count,
+                i2c_scale: scale,
+                modbus_scale: 100.0,
+                modbus_region: "holding_register".into(),
+                modbus_offset: 16,
+                ..IoGroup::default()
+            });
+        }
+
+        if let (Some(count), Some(reg)) = (ch.analog_4_20ma_outputs, r.i4_20_out) {
+            self.io_groups.push(IoGroup {
+                name: "4-20mA outputs".into(),
+                direction: "output".into(),
+                op: "write_u16_le".into(),
+                register: Some(reg),
+                channels: count,
+                i2c_scale: scale,
+                modbus_scale: 100.0,
+                modbus_region: "holding_register".into(),
+                modbus_offset: 20,
+                ..IoGroup::default()
+            });
         }
     }
 }

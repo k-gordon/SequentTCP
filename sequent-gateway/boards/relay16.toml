@@ -28,3 +28,13 @@ relay_remap = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 outport_reg = 0x02      # Output Port register (read/write, 2B LE)
 inport_reg = 0x00       # Input Port register (read, 2B LE)
 config_reg = 0x06       # Configuration register (0=output, 1=input, 2B LE)
+
+[[io_group]]
+name = "Relays"
+direction = "output"
+op = "pca9535_rmw_bit"
+register = 0x02
+channels = 16
+modbus_region = "coil"
+modbus_offset = 0
+bit_remap = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]

@@ -89,7 +89,6 @@ impl BoardRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::OutputCache;
     use crate::databank::DataBank;
     use anyhow::Result;
 
@@ -102,7 +101,7 @@ mod tests {
     impl SequentBoard for MockInputBoard {
         fn name(&self) -> &str { "MockInput" }
         fn stack_id(&self) -> u8 { self.stack }
-        fn capabilities(&self) -> &'static [BoardCapability] {
+        fn capabilities(&self) -> &[BoardCapability] {
             &[BoardCapability::AnalogInputs, BoardCapability::DiscreteInputs]
         }
         fn poll_inputs(&mut self, db: &mut DataBank) -> Result<()> {
@@ -121,11 +120,11 @@ mod tests {
     impl SequentBoard for MockRelayBoard {
         fn name(&self) -> &str { "MockRelay" }
         fn stack_id(&self) -> u8 { self.stack }
-        fn capabilities(&self) -> &'static [BoardCapability] {
+        fn capabilities(&self) -> &[BoardCapability] {
             &[BoardCapability::Relays]
         }
         fn relay_count(&self) -> usize { self.relays }
-        fn apply_outputs(&mut self, _db: &DataBank, _cache: &mut OutputCache) -> Result<()> {
+        fn apply_outputs(&mut self, _db: &DataBank) -> Result<()> {
             self.applied = true;
             Ok(())
         }
@@ -189,9 +188,8 @@ mod tests {
         reg.register(Box::new(MockRelayBoard { stack: 0, relays: 16, applied: false }));
 
         let db = DataBank::new();
-        let mut cache = OutputCache::new();
         for board in reg.boards_mut() {
-            board.apply_outputs(&db, &mut cache).unwrap();
+            board.apply_outputs(&db).unwrap();
         }
         // Relay board's apply_outputs was called (no panic = success)
     }

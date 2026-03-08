@@ -25,3 +25,13 @@ relay_remap = [7, 6, 5, 4, 3, 2, 1, 0]
 outport_reg = 0x02
 inport_reg = 0x00
 config_reg = 0x06
+
+[[io_group]]
+name = "Relays"
+direction = "output"
+op = "pca9535_rmw_bit"
+register = 0x02
+channels = 8
+modbus_region = "coil"
+modbus_offset = 0
+bit_remap = [7, 6, 5, 4, 3, 2, 1, 0]

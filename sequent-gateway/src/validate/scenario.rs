@@ -374,6 +374,7 @@ mod tests {
             },
             registers: RegisterMap::default(),
             pca9535: None,
+            io_groups: vec![],
         }
     }
 
@@ -384,6 +385,7 @@ mod tests {
             channels: ChannelConfig { relays: Some(16), ..Default::default() },
             registers: RegisterMap::default(),
             pca9535: Some(Pca9535Config { outport_reg: 0x02, inport_reg: 0x00, config_reg: 0x06 }),
+            io_groups: vec![],
         }
     }
 
@@ -443,6 +445,7 @@ mod tests {
             channels: ChannelConfig { relays: Some(8), ..Default::default() },
             registers: RegisterMap::default(),
             pca9535: Some(Pca9535Config { outport_reg: 0x02, inport_reg: 0x00, config_reg: 0x06 }),
+            io_groups: vec![],
         };
         let defs = vec![relay16_def(), relay8];
         let cfg = ScenarioConfig::from_boards(&names, &defs, &args);

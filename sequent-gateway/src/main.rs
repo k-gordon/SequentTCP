@@ -24,13 +24,11 @@ use tracing::{debug, error, info, warn};
 
 use board_def::BoardDef;
 use board_registry::BoardRegistry;
-use cache::OutputCache;
 use channel_watchdog::ChannelWatchdog;
 use cli::Cli;
 use databank::DataBank;
-use hal::megaind::MegaIndBoard;
-use hal::relay16::RelayBoard;
-use hal::traits::BoardCapability;
+use hal::driver::GenericBoard;
+use hal::traits::{BoardCapability, SequentBoard};
 use health::HealthStats;
 use i2c_recovery::I2cWatchdog;
 use registers::{
@@ -147,49 +145,47 @@ async fn main() -> Result<()> {
         args.boards.iter().map(|s| s.to_lowercase()).collect()
     };
 
-    // Validate board types
+    // Load board definitions dynamically from TOML files.
+    let mut board_instances: Vec<BoardInstance> = Vec::new();
     for bt in &board_types {
-        match bt.as_str() {
-            "megaind" | "relay16" | "relay8" => {}
-            other => {
-                anyhow::bail!(
-                    "Unknown board type '{other}'. Supported: megaind, relay16, relay8"
-                );
+        let toml_path = args.boards_dir.join(format!("{bt}.toml"));
+        #[allow(deprecated)]
+        let def = if toml_path.exists() {
+            BoardDef::load(&toml_path)?
+        } else if args.builtin_defaults {
+            match bt.as_str() {
+                "megaind" => BoardDef::default_megaind(),
+                "relay16" => BoardDef::default_relay16(),
+                "relay8" => BoardDef::default_relay8(),
+                other => anyhow::bail!(
+                    "No TOML found for '{other}' and no built-in defaults available.\n\
+                     Place a {other}.toml in {} or run with --install-boards.",
+                    args.boards_dir.display()
+                ),
             }
-        }
+        } else {
+            anyhow::bail!(
+                "Board definition not found: {}\n\
+                 Place a {bt}.toml in {} or pass --builtin-defaults.",
+                toml_path.display(),
+                args.boards_dir.display()
+            );
+        };
+
+        // Assign stack ID based on protocol.
+        let stack = if def.board.protocol == "pca9535" {
+            args.relay_stack
+        } else {
+            args.ind_stack
+        };
+
+        info!("Loaded board: {} ({})", def.board.name, bt);
+        board_instances.push(BoardInstance {
+            slug: bt.clone(),
+            def,
+            stack_id: stack,
+        });
     }
-
-    // The default_*() fallbacks are deprecated — TOML files are the
-    // primary source.  These calls only matter when --builtin-defaults
-    // is passed and the TOML file is missing.
-    #[allow(deprecated)]
-    let megaind_def = BoardDef::load_or_default(
-        &args.boards_dir.join("megaind.toml"),
-        BoardDef::default_megaind(),
-        args.builtin_defaults,
-    )?;
-    #[allow(deprecated)]
-    let relay16_def = BoardDef::load_or_default(
-        &args.boards_dir.join("relay16.toml"),
-        BoardDef::default_relay16(),
-        args.builtin_defaults,
-    )?;
-    #[allow(deprecated)]
-    let relay8_def = BoardDef::load_or_default(
-        &args.boards_dir.join("relay8.toml"),
-        BoardDef::default_relay8(),
-        args.builtin_defaults,
-    )?;
-
-    // Pick the relay board def (relay16 takes priority if both are specified;
-    // relay8 uses the same RelayBoard HAL).
-    let relay_def = if board_types.iter().any(|b| b == "relay16") {
-        relay16_def
-    } else if board_types.iter().any(|b| b == "relay8") {
-        relay8_def
-    } else {
-        relay16_def // unused fallback
-    };
 
     info!(
         "Sequent Gateway v{} starting",
@@ -239,16 +235,12 @@ async fn main() -> Result<()> {
         let hs = health_stats.clone();
 
         let config = PollConfig {
-            ind_stack: args.ind_stack,
-            relay_stack: args.relay_stack,
             map_opto: args.map_opto_to_reg,
             log_interval: args.log_interval,
             i2c_reset_threshold: args.i2c_reset_threshold,
             channel_fault_threshold: args.channel_fault_threshold,
             relay_verify_interval: args.relay_verify_interval,
-            megaind_def,
-            relay_def,
-            board_types,
+            boards: board_instances,
         };
 
         std::thread::Builder::new()
@@ -301,16 +293,20 @@ async fn main() -> Result<()> {
 /// All parameters needed by the I²C poll loop, replacing the former 14
 /// positional arguments.
 struct PollConfig {
-    ind_stack: u8,
-    relay_stack: u8,
     map_opto: bool,
     log_interval: u64,
     i2c_reset_threshold: u32,
     channel_fault_threshold: u32,
     relay_verify_interval: u32,
-    megaind_def: BoardDef,
-    relay_def: BoardDef,
-    board_types: Vec<String>,
+    boards: Vec<BoardInstance>,
+}
+
+/// A board instance ready for the poll loop.
+struct BoardInstance {
+    #[allow(dead_code)]
+    slug: String,
+    def: BoardDef,
+    stack_id: u8,
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -323,29 +319,13 @@ struct PollConfig {
 /// descriptors.
 fn build_registry(config: &PollConfig) -> BoardRegistry {
     let mut registry = BoardRegistry::new();
-    for bt in &config.board_types {
-        match bt.as_str() {
-            "megaind" => {
-                match MegaIndBoard::new(I2C_BUS, config.ind_stack, &config.megaind_def) {
-                    Ok(mut b) => {
-                        if let Ok((major, minor)) = b.read_firmware_version() {
-                            info!("Industrial HAT firmware: v{major:02}.{minor:02}");
-                        }
-                        registry.register(Box::new(b));
-                    }
-                    Err(e) => error!("Failed to open Industrial HAT: {e:#}"),
-                }
+    for inst in &config.boards {
+        match GenericBoard::new(I2C_BUS, inst.stack_id, &inst.def) {
+            Ok(b) => {
+                info!("{} opened (stack {})", b.name(), b.stack_id());
+                registry.register(Box::new(b));
             }
-            "relay16" | "relay8" => {
-                match RelayBoard::new(I2C_BUS, config.relay_stack, &config.relay_def) {
-                    Ok(b) => {
-                        info!("Relay board opened: {} channels", b.relay_count());
-                        registry.register(Box::new(b));
-                    }
-                    Err(e) => error!("Failed to open Relay HAT: {e:#}"),
-                }
-            }
-            _ => {}
+            Err(e) => error!("Failed to open {}: {e:#}", inst.def.board.name),
         }
     }
     registry
@@ -374,7 +354,6 @@ fn poll_loop(
 
     registry.log_startup_summary();
 
-    let mut cache = OutputCache::new();
     let mut watchdog = I2cWatchdog::new(config.i2c_reset_threshold);
     let mut ch_wd = ChannelWatchdog::new(config.channel_fault_threshold);
     let mut last_heartbeat = Instant::now();
@@ -451,7 +430,6 @@ fn poll_loop(
             if watchdog.attempt_recovery() {
                 // Re-open I²C device file descriptors
                 registry = build_registry(&config);
-                cache = OutputCache::new(); // force re-sync all outputs
                 continue; // skip rest of this cycle
             }
         }
@@ -460,7 +438,7 @@ fn poll_loop(
         {
             let db = data_bank.read().unwrap();
             for board in registry.boards_mut() {
-                if let Err(e) = board.apply_outputs(&db, &mut cache) {
+                if let Err(e) = board.apply_outputs(&db) {
                     health_stats.inc_i2c_errors();
                     error!("{} apply_outputs failed: {e:#}", board.name());
                 }
@@ -480,11 +458,11 @@ fn poll_loop(
                 let board_relays = board.relay_count();
                 match board.read_relay_state() {
                     Ok(actual) => {
-                        let expected = cache.relay_bitmask(board_relays);
+                        let expected = board.expected_relay_bitmask();
                         let diff = actual ^ expected;
                         let mut effective_diff: u16 = 0;
                         for i in 0..board_relays {
-                            if diff & (1 << i) != 0 && cache.has_confirmed_relay(i) {
+                            if diff & (1 << i) != 0 && board.has_confirmed_relay(i) {
                                 effective_diff |= 1 << i;
                             }
                         }
@@ -495,7 +473,7 @@ fn poll_loop(
                             health_stats.inc_relay_mismatches();
                             for i in 0..board_relays {
                                 if effective_diff & (1 << i) != 0 {
-                                    cache.invalidate_relay(i);
+                                    board.invalidate_relay(i);
                                 }
                             }
                         }
