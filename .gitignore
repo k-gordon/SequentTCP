@@ -15,9 +15,3 @@ desktop.ini
 
 # Logs
 *.log
-
-# Legacy Python (deprecated)
-__pycache__/
-*.py[cod]
-venv/
-.venv/

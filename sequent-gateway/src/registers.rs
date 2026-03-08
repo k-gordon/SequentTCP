@@ -10,7 +10,6 @@
 //!
 //! Ported from:
 //! - MegaInd: <https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/megaind.h>
-//! - MegaInd Python: <https://github.com/SequentMicrosystems/megaind-rpi/blob/main/python/megaind/__init__.py>
 //! - 16-Relay: <https://github.com/SequentMicrosystems/16relind-rpi>
 
 // Register address constants are used in board_def tests as reference values.
@@ -182,7 +181,7 @@ mod tests {
 
     #[test]
     fn megaind_register_addresses_match_c_header() {
-        // Cross-referenced against megaind.h and the Python library
+        // Cross-referenced against megaind.h
         assert_eq!(I2C_MEM_RELAY_VAL, 0x00);
         assert_eq!(I2C_MEM_RELAY_SET, 0x01);
         assert_eq!(I2C_MEM_RELAY_CLR, 0x02);

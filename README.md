@@ -3,9 +3,6 @@
 A high-performance Modbus TCP gateway for **Sequent Microsystems** Raspberry Pi HATs, written in Rust.  
 It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware — relays, analog I/O, opto-isolated inputs, and open-drain outputs — over standard Modbus registers.
 
-> **Note:** The original Python proof-of-concept (`modbusTCP.py`) is **deprecated**.
-> All new development targets the Rust binary in `sequent-gateway/`.
-
 ## Supported Hardware
 
 | Board | Stack ID | `--board` flag |
@@ -104,23 +101,19 @@ curl http://localhost:8080/health
 
 ### Hardware Validation (on-Pi)
 
-A self-contained test suite exercises the live gateway against real hardware
-and produces a structured PASS/FAIL report.
+The gateway includes a self-contained `validate` subcommand that exercises live
+hardware and produces a structured PASS/FAIL report — no Python or external
+tools required.
 
 ```bash
-# Start the gateway in one terminal:
-sudo ./target/release/sequent-gateway --health-port 8080 --builtin-defaults
+# Interactive board picker:
+sudo ./target/release/sequent-gateway validate
 
-# Run the validation suite in another (pyModbusTCP is in ~/venv):
-~/venv/bin/python3 tests/hw-validation.py
+# Explicit board selection:
+sudo ./target/release/sequent-gateway validate --board megaind --board relay16
 
-# Safe mode — skip relay/OD/analog writes (won't toggle outputs):
-~/venv/bin/python3 tests/hw-validation.py --skip-writes
-
-# Run just one category:
-~/venv/bin/python3 tests/hw-validation.py --only health
-~/venv/bin/python3 tests/hw-validation.py --only relay
-~/venv/bin/python3 tests/hw-validation.py --only stability
+# Skip relay/OD/analog writes (safe for live equipment):
+sudo ./target/release/sequent-gateway validate --skip-writes
 ```
 
 The report maps directly to Story 10 and Epic 2 acceptance criteria.
@@ -168,31 +161,11 @@ The gateway runs a 10 Hz polling loop with direct I²C register access (< 1 ms p
 - **Rotating file logs** — structured tracing with optional log directory
 - **Health endpoint** — lightweight HTTP/JSON status for monitoring dashboards
 - **Dynamic board selection** — `SequentBoard` trait for runtime HAL introspection
-- **Single static binary** — no Python runtime, no pip, no venv on the Pi
+- **Single static binary** — no runtime dependencies on the Pi
 
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for the project history and completed milestones.
-
-<details>
-<summary>📜 Legacy Python Gateway (deprecated)</summary>
-
-The original proof-of-concept (`legacy/modbusTCP.py`) used `pyModbusTCP` and shelled out
-to Sequent's CLI tools (`megaind`, `16relind`) via `subprocess`. It validated the
-concept but added ~100 ms latency per I/O call and had no analog output support.
-
-The file is retained in the `legacy/` folder for historical reference only.
-**Do not use it for new deployments.**
-
-If you still need it for some reason:
-
-```bash
-python3 -m venv venv && source venv/bin/activate
-pip install pyModbusTCP
-sudo ./venv/bin/python3 legacy/modbusTCP.py
-```
-
-</details>
 
 ## License
 
