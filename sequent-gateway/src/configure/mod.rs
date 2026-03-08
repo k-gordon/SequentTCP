@@ -257,9 +257,7 @@ fn check_install(
     if status.success() {
         Ok(Some(Ok(())))
     } else {
-        Ok(Some(anyhow::bail!(
-            "Re-launched gateway exited with: {status}"
-        )))
+        anyhow::bail!("Re-launched gateway exited with: {status}")
     }
 }
 
