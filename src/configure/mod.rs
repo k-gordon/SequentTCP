@@ -146,7 +146,7 @@ fn download_boards_zip(url: &str, zip_path: &str) -> anyhow::Result<()> {
     let resp = reqwest::blocking::get(url)
         .map_err(|e| anyhow::anyhow!("HTTP error: {e}"))?;
     let mut out = File::create(zip_path)?;
-    let mut content = resp.bytes().map_err(|e| anyhow::anyhow!("Read error: {e}"))?;
+    let content = resp.bytes().map_err(|e| anyhow::anyhow!("Read error: {e}"))?;
     copy(&mut content.as_ref(), &mut out)?;
     Ok(())
 }
