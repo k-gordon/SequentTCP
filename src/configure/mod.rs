@@ -85,10 +85,10 @@ fn run_tui(
         available = discover_all_boards(sys_boards)?;
     }
 
-Please place board definitions in ./boards or /etc/sequent-gateway/boards, or use --builtin-defaults.");
+    // Optionally: add built-in defaults if no TOMLs found
     // Optionally: add built-in defaults if no TOMLs found
     if available.is_empty() {
-        println!("\n  ⚠️  No board TOML files found in ./boards or /etc/sequent-gateway/boards.");
+        println!("\n  No board TOML files found in ./boards or /etc/sequent-gateway/boards.");
         println!("  Would you like to download the boards directory from GitHub? [Y/n]");
         use std::io::{self, Write, BufRead};
         io::stdout().flush().ok();
@@ -99,7 +99,7 @@ Please place board definitions in ./boards or /etc/sequent-gateway/boards, or us
             // Download boards directory from GitHub main branch
             let url = "https://raw.githubusercontent.com/k-gordon/SequentTCP/main/boards.zip";
             let zip_path = "boards_download.zip";
-            println!("  Downloading boards from {url} ...");
+            println!("  Downloading boards from {} ...", url);
             match download_boards_zip(url, zip_path) {
                 Ok(_) => {
                     println!("  Extracting boards ...");
@@ -180,12 +180,12 @@ fn extract_boards_zip(zip_path: &str, dest_dir: &str) -> anyhow::Result<()> {
 
     // ── Post-TUI actions ────────────────────────────────────────────
     if app.saved {
-        println!("\n  ✅ Configuration saved to: {}", output_path.display());
+        println!("\n  Configuration saved to: {}", output_path.display());
 
         // Install boards if requested
         if let Some(dest) = install_boards {
             install_board_files(boards_dir, dest)?;
-            println!("  📦 Board definitions installed to: {}", dest.display());
+            println!("  Board definitions installed to: {}", dest.display());
         }
 
         // Install systemd service if requested
@@ -290,16 +290,16 @@ fn check_install(
         let perms = std::fs::Permissions::from_mode(0o755);
         std::fs::set_permissions(INSTALL_BIN, perms)?;
     }
-    println!("  ✅ Binary installed to {INSTALL_BIN}");
+    println!("  Binary installed to {INSTALL_BIN}");
 
     // 2. Install board definitions
     let boards_dest = std::path::Path::new(INSTALL_BOARDS_DIR);
     install_board_files(boards_dir, boards_dest)?;
-    println!("  📦 Board definitions installed to {INSTALL_BOARDS_DIR}");
+    println!("  Board definitions installed to {INSTALL_BOARDS_DIR}");
 
     // 3. Create config directory
     std::fs::create_dir_all(INSTALL_CONFIG_DIR)?;
-    println!("  📁 Config directory: {INSTALL_CONFIG_DIR}");
+    println!("  Config directory: {INSTALL_CONFIG_DIR}");
 
     println!();
     println!("  Restarting from {INSTALL_BIN} ...");
@@ -537,7 +537,7 @@ fn install_systemd_service(config_path: &Path) -> Result<()> {
   std::fs::copy(config_path, &system_config_path)
     .context("Failed to copy config to system directory")?;
   
-  println!(" ✅ Config file copied to: {}", system_config_path.display());
+  println!(" Config file copied to: {}", system_config_path.display());
 
   // Create the systemd service file
   let service_content = format!(
@@ -565,7 +565,7 @@ WantedBy=multi-user.target
   std::fs::write(service_path, service_content)
     .context("Failed to write systemd service file")?;
   
-  println!(" ✅ Systemd service file created: {}", service_path);
+  println!(" Systemd service file created: {}", service_path);
 
   // Reload systemd daemon
   println!(" Reloading systemd daemon...");
@@ -590,7 +590,7 @@ WantedBy=multi-user.target
     anyhow::bail!("systemctl enable failed");
   }
   
-  println!(" ✅ Service enabled for automatic startup");
+  println!(" Service enabled for automatic startup");
 
   // Start the service
   println!(" Starting systemd service...");
@@ -604,7 +604,7 @@ WantedBy=multi-user.target
     anyhow::bail!("systemctl start failed");
   }
   
-  println!(" ✅ Service started successfully");
+  println!(" Service started successfully");
 
   Ok(())
 }
