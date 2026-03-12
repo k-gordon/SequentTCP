@@ -85,11 +85,40 @@ fn run_tui(
         available = discover_all_boards(sys_boards)?;
     }
 
+Please place board definitions in ./boards or /etc/sequent-gateway/boards, or use --builtin-defaults.");
     // Optionally: add built-in defaults if no TOMLs found
     if available.is_empty() {
-        // TODO: implement built-in defaults if desired
-        anyhow::bail!("No board TOML files found in ./boards or /etc/sequent-gateway/boards.\n\
-Please place board definitions in ./boards or /etc/sequent-gateway/boards, or use --builtin-defaults.");
+        println!("\n  ⚠️  No board TOML files found in ./boards or /etc/sequent-gateway/boards.");
+        println!("  Would you like to download the boards directory from GitHub? [Y/n]");
+        use std::io::{self, Write, BufRead};
+        io::stdout().flush().ok();
+        let mut input = String::new();
+        io::stdin().lock().read_line(&mut input).ok();
+        let answer = input.trim().to_lowercase();
+        if answer.is_empty() || answer == "y" || answer == "yes" {
+            // Download boards directory from GitHub main branch
+            let url = "https://raw.githubusercontent.com/k-gordon/SequentTCP/main/boards.zip";
+            let zip_path = "boards_download.zip";
+            println!("  Downloading boards from {url} ...");
+            match download_boards_zip(url, zip_path) {
+                Ok(_) => {
+                    println!("  Extracting boards ...");
+                    if let Err(e) = extract_boards_zip(zip_path, "./boards") {
+                        anyhow::bail!("Failed to extract boards: {e}");
+                    }
+                    // Re-discover boards
+                    available = discover_all_boards(cwd_boards)?;
+                    if available.is_empty() {
+                        anyhow::bail!("Downloaded boards directory did not contain any valid board TOML files.");
+                    }
+                }
+                Err(e) => {
+                    anyhow::bail!("Failed to download boards directory: {e}");
+                }
+            }
+        } else {
+            anyhow::bail!("No board TOML files found. Please place board definitions in ./boards or /etc/sequent-gateway/boards, or use --builtin-defaults.");
+        }
     }
 
     // ── Load existing config if present ──────────────────────────────
@@ -108,7 +137,41 @@ Please place board definitions in ./boards or /etc/sequent-gateway/boards, or us
     // ── Run app ──────────────────────────────────────────────────────
     let mut app = App::new(available, existing, output_path.to_path_buf());
     let result = run_app(&mut terminal, &mut app);
+    // ...existing code...
 
+// Helper: Download boards zip from GitHub
+fn download_boards_zip(url: &str, zip_path: &str) -> anyhow::Result<()> {
+    use std::fs::File;
+    use std::io::copy;
+    let resp = reqwest::blocking::get(url)
+        .map_err(|e| anyhow::anyhow!("HTTP error: {e}"))?;
+    let mut out = File::create(zip_path)?;
+    let mut content = resp.bytes().map_err(|e| anyhow::anyhow!("Read error: {e}"))?;
+    copy(&mut content.as_ref(), &mut out)?;
+    Ok(())
+}
+
+// Helper: Extract boards zip
+fn extract_boards_zip(zip_path: &str, dest_dir: &str) -> anyhow::Result<()> {
+    use std::fs;
+    use zip::ZipArchive;
+    let file = fs::File::open(zip_path)?;
+    let mut archive = ZipArchive::new(file)?;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let outpath = std::path::Path::new(dest_dir).join(file.name());
+        if file.is_dir() {
+            fs::create_dir_all(&outpath)?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut outfile = fs::File::create(&outpath)?;
+            std::io::copy(&mut file, &mut outfile)?;
+        }
+    }
+    Ok(())
+}
     // ── Restore terminal ─────────────────────────────────────────────
     disable_raw_mode()?;
     std::io::stdout().execute(LeaveAlternateScreen)?;
