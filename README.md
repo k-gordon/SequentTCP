@@ -9,15 +9,18 @@ The fastest way to set up the gateway is the **interactive configuration TUI**.
 It walks you through board selection, addressing, and server settings — then
 writes a ready-to-use `sequent-gateway.toml` config file.
 
+
+### Quick start install & configure (for latest release)
+
+
+#### Arm64
 ```bash
-# Build (first time only)
-cd sequent-gateway
-cargo build --release
-
-# Launch the configuration wizard
-sudo ./target/release/sequent-gateway configure
+wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarch64.zip && unzip sequent-gateway-aarch64.zip && sudo ./sequent-gateway config
 ```
-
+#### Armv7
+```bash
+wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarchv7.zip && unzip sequent-gateway-aarchv7.zip && sudo ./sequent-gateway config
+```
 If the binary isn't installed to `/usr/local/bin/` yet, the TUI will detect
 this and offer to install it for you (copies the binary and board definitions
 to `/etc/sequent-gateway/`).  After install it re-launches from the system
@@ -35,39 +38,52 @@ path automatically.
 
 ### After configuration
 
-```bash
-# Start the gateway using the config file
-sudo sequent-gateway --config /etc/sequent-gateway/sequent-gateway.toml
 
-# Or install as a systemd service (see below)
+#### Start the gateway using the config file
+```bash
+sudo sequent-gateway --config /etc/sequent-gateway/sequent-gateway.toml
 ```
+
+Or, let the TUI handle everything:
+
+The interactive configuration wizard (`sudo sequent-gateway config`) will prompt you to install and enable the systemd service after saving your config. It will copy the config file to the correct location and set up the service for you.
+
 
 ## Supported Hardware
 
-| Board | Default Stack | `--board` flag |
-|---|---|---|
-| [Sequent Mega-Industrial HAT](https://sequentmicrosystems.com/) | 1 | `megaind` |
-| [Sequent 16-Relay HAT](https://sequentmicrosystems.com/) | 0 | `relay16` |
-| [Sequent 8-Relay HAT](https://sequentmicrosystems.com/) | 0 | `relay8` |
 
-Plus **31 experimental board definitions** in `boards/experimental/` — the TUI
-shows all of them with their capabilities.
+| Board Name                              | Filename              |
+|------------------------------------------|----------------------|
+| **Sequent Mega-Industrial HAT**          | megaind.toml          |
+| **Sequent 16-Relay HAT**                 | relay16.toml          |
+| **Sequent 8-Relay HAT**                  | relay8.toml           |
 
-## Modbus Memory Map
 
-**Slave ID:** 1 (default, configurable via `--slave-id`)
+## Experimental Board Definitions
 
-| Register Type | Address | Description |
-|---|---|---|
-| **Coils** (R/W) | 0–15 | Relay Board - Relays 1–16 (or 1–8 for 8-Relay) |
-| **Coils** (R/W) | 16–19 | Industrial Board - Open Drain Outputs 1–4 |
-| **Discrete Inputs** (RO) | 0–7 | Industrial Board - Opto-Inputs 1–8 |
-| **Holding Registers** (RO) | 0–7 | Industrial Board - 4-20 mA Inputs (mA × 100) |
-| **Holding Registers** (RO) | 8 | Industrial Board - PSU Voltage (V × 100) |
-| **Holding Registers** (RO) | 10–13 | Industrial Board - 0-10 V Inputs (V × 100) |
-| **Holding Registers** (R/W) | 16–19 | Industrial Board - 0-10 V Outputs (V × 100) |
-| **Holding Registers** (R/W) | 20–23 | Industrial Board - 4-20 mA Outputs (mA × 100) |
-| **Holding Registers** (RO) | 24 | Relay read-back bitmask (diagnostic, updated every `--relay-verify-interval` ticks) |
+> These TOML files are **experimental and untested** on real hardware. See boards/experimental/README.md for details.
+
+The following boards are available in `boards/experimental/`:
+
+
+
+| Board Name                              | Filename              | Board Name                              | Filename              |
+|------------------------------------------|-----------------------|------------------------------------------|-----------------------|
+| **Sequent 16-Input Industrial HAT**      | 16inpind_pca.toml     | **Sequent 16-Digital-Input HAT**        | 16inputs.toml         |
+| **Sequent 16 Universal Input HAT**       | 16univin.toml         | **Sequent 16 Analog 0-10V Output HAT**  | 16uout.toml           |
+| **Sequent 24-Bit 8-Voltage-Input HAT**   | 24b8vin.toml          | **Sequent 3-Relay Industrial HAT**      | 3relind.toml          |
+| **Sequent 4-Relay 4-Input HAT**          | 4rel4in.toml          | **Sequent 4-Relay HAT**                 | 4relay.toml           |
+| **Sequent 4-Relay Industrial MCU**       | 4relind_mcu.toml      | **Sequent 4-Relay Industrial PCA**      | 4relind_pca.toml      |
+| **Sequent 8-Channel Relay Test**         | 8crt.toml             | **Sequent 8-Input MCU**                 | 8inputs_mcu.toml      |
+| **Sequent 8-Input PCA**                  | 8inputs_pca.toml      | **Sequent 8-MOSFET**                    | 8mosfet.toml          |
+| **Sequent 8-MOSIND MCU**                 | 8mosind_mcu.toml      | **Sequent 8-Relay HV**                  | 8relayhv.toml         |
+| **Sequent Dash**                         | dash.toml             | **Sequent FSRC**                        | fsrc.toml             |
+| **Sequent IOPlus**                       | ioplus.toml           | **Sequent LKit**                        | lkit.toml             |
+| **Sequent MegaBas**                      | megabas.toml          | **Sequent MegaIO**                      | megaio.toml           |
+| **Sequent MegaIO Industrial**            | megaioind.toml        | **Sequent MultiIO**                     | multiio.toml          |
+| **Sequent PLCPI**                        | plcpi.toml            | **Sequent RTD**                         | rtd.toml              |
+| **Sequent SmartFan**                     | smartfan.toml         | **Sequent SMTC**                        | smtc.toml             |
+| **Sequent TI**                           | ti.toml               | **Sequent WDT**                         | wdt.toml              |
 
 ## Quick Start (manual / headless)
 

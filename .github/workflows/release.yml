@@ -39,16 +39,17 @@ jobs:
             just cross-32
           fi
 
-      - name: Rename binary
+      - name: Zip binary
         run: |
           mkdir -p dist
-          cp target/${{ matrix.arch }}/release/sequent-gateway dist/sequent-gateway-${{ matrix.arch }}
+          cp target/${{ matrix.arch }}/release/sequent-gateway dist/sequent-gateway
+          zip -j dist/sequent-gateway-${{ matrix.arch }}.zip dist/sequent-gateway
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sequent-gateway-${{ matrix.arch }}
-          path: dist/sequent-gateway-${{ matrix.arch }}
+          name: sequent-gateway-${{ matrix.arch }}.zip
+          path: dist/sequent-gateway-${{ matrix.arch }}.zip
 
   release:
     needs: build
@@ -62,6 +63,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/**/sequent-gateway-*
+          files: dist/**/sequent-gateway-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
