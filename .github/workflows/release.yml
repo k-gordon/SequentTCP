@@ -33,7 +33,11 @@ jobs:
 
       - name: Build binary
         run: |
-          just cross-rpi --target ${{ matrix.arch }}
+          if [ "${{ matrix.arch }}" = "aarch64-unknown-linux-gnu" ]; then
+            just cross
+          else
+            just cross-32
+          fi
 
       - name: Rename binary
         run: |
