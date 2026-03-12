@@ -15,11 +15,11 @@ writes a ready-to-use `sequent-gateway.toml` config file.
 
 #### Arm64
 ```bash
-wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarch64.zip && unzip sequent-gateway-aarch64.zip && sudo ./sequent-gateway config
+wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarch64.zip && unzip sequent-gateway-aarch64.zip && sudo ./sequent-gateway configure
 ```
 #### Armv7
 ```bash
-wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarchv7.zip && unzip sequent-gateway-aarchv7.zip && sudo ./sequent-gateway config
+wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarchv7.zip && unzip sequent-gateway-aarchv7.zip && sudo ./sequent-gateway configure
 ```
 If the binary isn't installed to `/usr/local/bin/` yet, the TUI will detect
 this and offer to install it for you (copies the binary and board definitions
