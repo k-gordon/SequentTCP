@@ -117,7 +117,7 @@ fn run_tui(
 
     result?;
 
-    // ── Post-TUI actions ─────────────────────────────────────────────
+    // ── Post-TUI actions ────────────────────────────────────────────
     if app.saved {
         println!("\n  ✅ Configuration saved to: {}", output_path.display());
 
@@ -127,9 +127,19 @@ fn run_tui(
             println!("  📦 Board definitions installed to: {}", dest.display());
         }
 
+        // Install systemd service if requested
+        if app.install_systemd {
+            install_systemd_service(output_path)?;
+        }
+
         println!();
         println!("  Start the gateway with:");
-        println!("    sequent-gateway --config {}", output_path.display());
+        if app.install_systemd {
+            println!("    systemctl start sequent-gateway");
+            println!("    systemctl enable sequent-gateway  # Enable on boot");
+        } else {
+            println!("    sequent-gateway --config {}", output_path.display());
+        }
         println!();
     } else {
         println!("\n  Configuration cancelled — no changes written.\n");
@@ -444,4 +454,96 @@ fn copy_toml_files(src: &Path, dest: &Path) -> Result<()> {
         std::fs::copy(&path, &dest_file)?;
     }
     Ok(())
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Systemd service installation
+// ════════════════════════════════════════════════════════════════════════
+
+/// Install the systemd service for the gateway.
+fn install_systemd_service(config_path: &Path) -> Result<()> {
+  use anyhow::Context;
+
+  // Determine the system config directory
+  let config_dir = std::path::PathBuf::from(INSTALL_CONFIG_DIR);
+  
+  // Create the config directory if it doesn't exist
+  std::fs::create_dir_all(&config_dir)
+    .context("Failed to create system config directory")?;
+
+  // Copy the config file to the system directory
+  let system_config_path = config_dir.join("sequent-gateway.toml");
+  std::fs::copy(config_path, &system_config_path)
+    .context("Failed to copy config to system directory")?;
+  
+  println!(" ✅ Config file copied to: {}", system_config_path.display());
+
+  // Create the systemd service file
+  let service_content = format!(
+    r#"[Unit]
+Description=Sequent Gateway - Modbus TCP to I²C Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart={} --config {}
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+"#,
+    INSTALL_BIN,
+    system_config_path.display()
+  );
+
+  let service_path = "/etc/systemd/system/sequent-gateway.service";
+  std::fs::write(service_path, service_content)
+    .context("Failed to write systemd service file")?;
+  
+  println!(" ✅ Systemd service file created: {}", service_path);
+
+  // Reload systemd daemon
+  println!(" Reloading systemd daemon...");
+  let status = std::process::Command::new("systemctl")
+    .arg("daemon-reload")
+    .status()
+    .context("Failed to run systemctl daemon-reload")?;
+  
+  if !status.success() {
+    anyhow::bail!("systemctl daemon-reload failed");
+  }
+
+  // Enable the service
+  println!(" Enabling systemd service...");
+  let status = std::process::Command::new("systemctl")
+    .arg("enable")
+    .arg("sequent-gateway.service")
+    .status()
+    .context("Failed to enable systemd service")?;
+  
+  if !status.success() {
+    anyhow::bail!("systemctl enable failed");
+  }
+  
+  println!(" ✅ Service enabled for automatic startup");
+
+  // Start the service
+  println!(" Starting systemd service...");
+  let status = std::process::Command::new("systemctl")
+    .arg("start")
+    .arg("sequent-gateway.service")
+    .status()
+    .context("Failed to start systemd service")?;
+  
+  if !status.success() {
+    anyhow::bail!("systemctl start failed");
+  }
+  
+  println!(" ✅ Service started successfully");
+
+  Ok(())
 }

@@ -32,6 +32,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         Screen::ServerSettings => draw_server_settings(f, chunks[1], app),
         Screen::I2cSettings => draw_i2c_settings(f, chunks[1], app),
         Screen::Review => draw_review(f, chunks[1], app),
+        Screen::SystemdInstall => draw_systemd_install(f, chunks[1], app),
     }
 
     draw_status(f, chunks[2], app);
@@ -48,6 +49,7 @@ fn draw_title(f: &mut Frame, area: Rect, app: &App) {
         Screen::ServerSettings => "3/5 · Server Settings",
         Screen::I2cSettings => "4/5 · I²C & Logging",
         Screen::Review => "5/5 · Review & Save",
+        Screen::SystemdInstall => "Systemd Service Setup",
     };
     let title = format!("  Sequent Gateway Configuration — {step}");
     let block = Block::default()
@@ -478,4 +480,106 @@ fn draw_review(f: &mut Frame, area: Rect, app: &App) {
         .block(summary_block)
         .wrap(Wrap { trim: true });
     f.render_widget(summary, chunks[1]);
+}
+// ════════════════════════════════════════════════════════════════════════
+// Screen 6: Systemd Service Installation
+// ════════════════════════════════════════════════════════════════════════
+fn draw_systemd_install(f: &mut Frame, area: Rect, app: &App) {
+  let chunks = Layout::default()
+    .direction(Direction::Vertical)
+    .constraints([
+      Constraint::Length(8), // Title and info
+      Constraint::Min(5),    // Instructions
+      Constraint::Length(3), // Footer
+    ])
+    .split(area);
+
+  // Title and status
+  let title_lines = vec![
+    Line::from(Span::styled(
+      "Systemd Service Installation",
+      Style::default().fg(Color::Cyan).bold(),
+    )),
+    Line::from(""),
+    Line::from(Span::styled(
+      "Would you like to install and enable the systemd service?",
+      Style::default().fg(Color::White),
+    )),
+    Line::from(""),
+    Line::from(Span::styled(
+      "This will configure the gateway to run as a system service",
+      Style::default().fg(Color::DarkGray),
+    )),
+    Line::from(Span::styled(
+      "with automatic startup on boot.",
+      Style::default().fg(Color::DarkGray),
+    )),
+  ];
+  let title_block = Block::default()
+    .borders(Borders::ALL)
+    .border_style(Style::default().fg(Color::Blue))
+    .title(" Systemd Service ");
+  let title_para = Paragraph::new(title_lines)
+    .block(title_block)
+    .wrap(Wrap { trim: true });
+  f.render_widget(title_para, chunks[0]);
+
+  // Instructions
+  let instruction_lines = vec![
+    Line::from(Span::styled(
+      "Instructions:",
+      Style::default().fg(Color::Yellow).bold(),
+    )),
+    Line::from(""),
+    Line::from(Span::styled(
+      "  Y/y  - Install and enable the systemd service",
+      Style::default().fg(Color::Green),
+    )),
+    Line::from(Span::styled(
+      "  N/n  - Skip systemd installation",
+      Style::default().fg(Color::DarkGray),
+    )),
+    Line::from(Span::styled(
+      "  Esc  - Skip systemd installation",
+      Style::default().fg(Color::DarkGray),
+    )),
+    Line::from(""),
+    Line::from(Span::styled(
+      "Note: You may need sudo privileges to install the service.",
+      Style::default().fg(Color::Yellow),
+    )),
+  ];
+  let instruction_block = Block::default()
+    .borders(Borders::ALL)
+    .border_style(Style::default().fg(Color::DarkGray));
+  let instruction_para = Paragraph::new(instruction_lines)
+    .block(instruction_block)
+    .wrap(Wrap { trim: true });
+  f.render_widget(instruction_para, chunks[1]);
+
+  // Footer
+  let footer = Paragraph::new(Span::styled(
+    "Press 'Y' to install or 'N' to skip",
+    Style::default().fg(Color::Cyan).bold(),
+  ))
+  .block(
+    Block::default()
+      .borders(Borders::ALL)
+      .border_style(Style::default().fg(Color::DarkGray)),
+  );
+  f.render_widget(footer, chunks[2]);
+
+  // Prevent user from accidentally exiting
+  if !app.saved {
+    let warning = Paragraph::new(Span::styled(
+      "⚠ Configuration not saved yet!",
+      Style::default().fg(Color::Red).bold(),
+    ))
+    .block(
+      Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Red)),
+    );
+    f.render_widget(warning, area);
+  }
 }

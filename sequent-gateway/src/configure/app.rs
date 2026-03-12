@@ -18,6 +18,7 @@ pub enum Screen {
     ServerSettings,
     I2cSettings,
     Review,
+    SystemdInstall,
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -104,6 +105,8 @@ pub struct App {
 
     /// Scroll offset for the review screen.
     pub review_scroll: usize,
+    /// Whether to install systemd service.
+    pub install_systemd: bool,
 }
 
 impl App {
@@ -186,6 +189,7 @@ impl App {
             editing: false,
             preview: String::new(),
             review_scroll: 0,
+            install_systemd: false,
         }
     }
 
@@ -198,6 +202,7 @@ impl App {
             Screen::ServerSettings => Screen::BoardConfig,
             Screen::I2cSettings => Screen::ServerSettings,
             Screen::Review => Screen::I2cSettings,
+            Screen::SystemdInstall => Screen::Review,
         };
         self.update_status();
     }
@@ -215,6 +220,7 @@ impl App {
             Screen::ServerSettings => self.handle_server_settings(key),
             Screen::I2cSettings => self.handle_i2c_settings(key),
             Screen::Review => self.handle_review(key),
+            Screen::SystemdInstall => self.handle_systemd_install(key),
         }
     }
 
@@ -481,17 +487,35 @@ impl App {
                 self.review_scroll += 1;
             }
             KeyCode::Char('s') | KeyCode::Enter => {
-                // Save
+                // Save and move to systemd install screen
                 let cfg = self.build_config();
                 match cfg.save(&self.output_path) {
                     Ok(()) => {
                         self.saved = true;
-                        return true;
+                        self.screen = Screen::SystemdInstall;
+                        self.update_status();
+                        return false;
                     }
                     Err(e) => {
                         self.status = format!("❌ Save failed: {e}");
                     }
                 }
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// Handle systemd install screen.
+    fn handle_systemd_install(&mut self, key: KeyCode) -> bool {
+        match key {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.install_systemd = true;
+                return true; // Exit, will install after TUI
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.install_systemd = false;
+                return true; // Exit, no install
             }
             _ => {}
         }
@@ -563,7 +587,6 @@ impl App {
             Screen::BoardConfig => "↑↓ Select field  +/- Adjust  ←→/Tab Switch board  Enter Continue  Esc Back".into(),
             Screen::ServerSettings => "↑↓ Navigate  Enter Edit/Toggle  Esc Back".into(),
             Screen::I2cSettings => "↑↓ Navigate  Enter Edit/Toggle  Esc Back".into(),
-            Screen::Review => "↑↓ Scroll  s/Enter Save  Esc Back".into(),
-        };
+            Screen::Review => "↑↓ Scroll  s/Enter Save  Esc Back".into(),            Screen::SystemdInstall => "Y/N Install systemd service Esc Skip".into(),        };
     }
 }
