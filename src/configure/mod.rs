@@ -75,23 +75,21 @@ fn run_tui(
     install_boards: Option<&Path>,
 ) -> Result<()> {
     // ── Discover boards ──────────────────────────────────────────────
-    // Try the supplied boards_dir first; if empty, fall back to the
-    // system-installed boards directory.
-    let effective_boards_dir = if boards_dir.is_dir() && has_toml_files(boards_dir) {
-        boards_dir.to_path_buf()
-    } else {
-        let sys = std::path::PathBuf::from(INSTALL_BOARDS_DIR);
-        if sys.is_dir() && has_toml_files(&sys) {
-            sys
-        } else {
-            boards_dir.to_path_buf() // will produce a clear error below
-        }
-    };
+    // Pecking order: ./boards, /etc/sequent-gateway/boards, built-in defaults
+    let cwd_boards = Path::new("./boards");
+    let sys_boards = Path::new(INSTALL_BOARDS_DIR);
+    let mut available = Vec::new();
+    if cwd_boards.is_dir() && has_toml_files(cwd_boards) {
+        available = discover_all_boards(cwd_boards)?;
+    } else if sys_boards.is_dir() && has_toml_files(sys_boards) {
+        available = discover_all_boards(sys_boards)?;
+    }
 
-    let available = discover_all_boards(&effective_boards_dir)?;
-
+    // Optionally: add built-in defaults if no TOMLs found
     if available.is_empty() {
-        anyhow::bail!("No board TOML files found in {}", boards_dir.display());
+        // TODO: implement built-in defaults if desired
+        anyhow::bail!("No board TOML files found in ./boards or /etc/sequent-gateway/boards.\n\
+Please place board definitions in ./boards or /etc/sequent-gateway/boards, or use --builtin-defaults.");
     }
 
     // ── Load existing config if present ──────────────────────────────
