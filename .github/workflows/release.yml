@@ -48,11 +48,16 @@ jobs:
           ARCH=$(echo "${{ matrix.arch }}" | cut -d'-' -f1)
           echo "ARCH=$ARCH" >> $GITHUB_OUTPUT
 
-      - name: Zip binary
+      - name: Bundle board definitions
+        run: |
+          mkdir -p dist/boards
+          cp -r boards/* dist/boards/
+
+      - name: Zip binary and boards
         run: |
           mkdir -p dist
           cp target/${{ matrix.arch }}/release/sequent-gateway dist/sequent-gateway
-          zip -j dist/sequent-gateway-${{ steps.arch.outputs.ARCH }}.zip dist/sequent-gateway
+          zip -r dist/sequent-gateway-${{ steps.arch.outputs.ARCH }}.zip dist/sequent-gateway dist/boards
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
