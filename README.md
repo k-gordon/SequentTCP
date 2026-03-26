@@ -7,8 +7,7 @@ It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardwa
 ## Getting Started
 
 The fastest way to set up the gateway is the **interactive configuration TUI**.
-It walks you through board selection, addressing, and server settings — then
-writes a ready-to-use `sequent-gateway.toml` config file.
+It walks you through board selection, addressing, and server settings, then writes a ready-to-use `sequent-gateway.toml` config file.
 
 
 ### Quick start install & configure (for latest release)
@@ -22,10 +21,7 @@ wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gat
 ```bash
 wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarchv7.zip && unzip sequent-gateway-aarchv7.zip && sudo ./sequent-gateway configure
 ```
-If the binary isn't installed to `/usr/local/bin/` yet, the TUI will detect
-this and offer to install it for you (copies the binary and board definitions
-to `/etc/sequent-gateway/`).  After install it re-launches from the system
-path automatically.
+If the binary isn't installed to `/usr/local/bin/` yet, the TUI will detect this and offer to install it for you (copies the binary and board definitions to `/etc/sequent-gateway/`).  After install it re-launches from the system path automatically.
 
 ### What the TUI does
 
@@ -88,8 +84,7 @@ The following boards are available in `boards/experimental/`:
 
 ## Quick Start (manual / headless)
 
-> **Prefer the TUI?** Run `sudo sequent-gateway configure` instead — it handles
-> everything below automatically.
+> **Prefer the TUI?** Run `sudo sequent-gateway configure` instead it handles everything below automatically.
 
 ### Prerequisites
 
@@ -137,7 +132,7 @@ sudo ./target/release/sequent-gateway --board relay16
 ### Install as a systemd Service
 
 > **Quickest path:** Run `sudo sequent-gateway configure --install-boards /etc/sequent-gateway/boards`
-> — it installs the binary, board definitions, and writes the config file in one step.
+> it installs the binary, board definitions, and writes the config file in one step.
 
 Manual install:
 
