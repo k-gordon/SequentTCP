@@ -1,4 +1,5 @@
-# SequentTCP — Modbus TCP ↔ I²C Gateway
+# SequentTCP - Modbus TCP ↔ I²C Gateway
+#### This implementation isn't stable in all ways, nor do all aspects function as described. Use this software at your own risk.
 
 A high-performance Modbus TCP gateway for **Sequent Microsystems** Raspberry Pi HATs, written in Rust.  
 It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware (relays, analog I/O, opto-isolated inputs, and open-drain outputs) over standard Modbus registers.
