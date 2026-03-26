@@ -3,24 +3,59 @@
 A high-performance Modbus TCP gateway for **Sequent Microsystems** Raspberry Pi HATs, written in Rust.  
 It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware (relays, analog I/O, opto-isolated inputs, and open-drain outputs) over standard Modbus registers.
 
+## Debugging & Installation Scripts
+
+For debugging board definition installation and reachability, use the provided shell scripts:
+
+### observe-board-install.sh
+
+Comprehensive observer for monitoring board installation to system locations.
+
+```bash
+# Check current state (no installation)
+./observe-board-install.sh --check-only
+
+# Install boards to /etc/sequent-gateway/boards
+sudo ./observe-board-install.sh
+
+# Verbose diagnostic report
+./observe-board-install.sh --verbose
+```
+
+### debug-board-reachability.sh
+
+Deep debugging for board TOML validation and I²C bus scanning.
+
+```bash
+# Validate all board definitions
+./debug-board-reachability.sh
+
+# Scan I²C bus (requires root)
+sudo ./debug-board-reachability.sh
+```
+
+See [DEBUG_SCRIPTS_README.md](DEBUG_SCRIPTS_README.md) for detailed usage instructions.
+
 ## Getting Started
 
 The fastest way to set up the gateway is the **interactive configuration TUI**.
 It walks you through board selection, addressing, and server settings — then
 writes a ready-to-use `sequent-gateway.toml` config file.
 
-
 ### Quick start install & configure (for latest release)
 
-
 #### Arm64
+
 ```bash
 wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarch64.zip && unzip sequent-gateway-aarch64.zip && sudo ./sequent-gateway configure
 ```
+
 #### Armv7
+
 ```bash
 wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarchv7.zip && unzip sequent-gateway-aarchv7.zip && sudo ./sequent-gateway configure
 ```
+
 If the binary isn't installed to `/usr/local/bin/` yet, the TUI will detect
 this and offer to install it for you (copies the binary and board definitions
 to `/etc/sequent-gateway/`).  After install it re-launches from the system
@@ -38,8 +73,8 @@ path automatically.
 
 ### After configuration
 
-
 #### Start the gateway using the config file
+
 ```bash
 sudo sequent-gateway --config /etc/sequent-gateway/sequent-gateway.toml
 ```
@@ -48,9 +83,7 @@ Or, let the TUI handle everything:
 
 The interactive configuration wizard (`sudo sequent-gateway config`) will prompt you to install and enable the systemd service after saving your config. It will copy the config file to the correct location and set up the service for you.
 
-
 ## Supported Hardware
-
 
 | Board Name                              | Filename              |
 |------------------------------------------|----------------------|
@@ -58,14 +91,11 @@ The interactive configuration wizard (`sudo sequent-gateway config`) will prompt
 | **Sequent 16-Relay HAT**                 | relay16.toml          |
 | **Sequent 8-Relay HAT**                  | relay8.toml           |
 
-
 ## Experimental Board Definitions
 
 > These TOML files are **experimental and untested** on real hardware. See boards/experimental/README.md for details.
 
 The following boards are available in `boards/experimental/`:
-
-
 
 | Board Name                              | Filename              | Board Name                              | Filename              |
 |------------------------------------------|-----------------------|------------------------------------------|-----------------------|
@@ -188,7 +218,7 @@ Copy-paste the output to report results.
 
 ## Architecture
 
-```
+```diag
 ┌──────────────────────────────────────────────────┐
 │                  Rust Binary                     │
 │                                                  │

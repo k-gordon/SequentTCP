@@ -9,6 +9,7 @@
 **Business Value:** The current Python gateway validates the architecture but shells out to `megaind`/`16relind` CLI tools on every cycle, adding ~100 ms latency and creating fragile stdout-parsing dependencies. A Rust rewrite delivers a self-contained, memory-safe, `systemd`-ready binary suitable for unattended industrial deployment.
 
 **Acceptance Criteria (Epic-level):**
+
 - Gateway binary cross-compiles to `aarch64`/`armv7` and runs on Raspberry Pi 4
 - All Modbus register mappings from the Python PoC are preserved (coils, discrete inputs, holding registers)
 - Full I/O cycle completes in < 1 ms (vs ~100+ ms today)
@@ -28,6 +29,7 @@
 **so that** I can build and iterate on the gateway from a dev machine targeting the Pi.
 
 **Acceptance Criteria:**
+
 - [x] `cargo init sequent-gateway` with `edition = "2021"`
 - [x] `Cargo.toml` includes dependencies: `i2cdev`, `tokio`, `clap`, `tracing`, `tracing-subscriber` (custom Modbus TCP server instead of `tokio-modbus`)
 - [x] `.cargo/config.toml` configured for `aarch64-unknown-linux-gnu` and `armv7-unknown-linux-gnueabihf` targets
@@ -45,6 +47,7 @@
 **so that** all hardware access uses verified register addresses with no magic numbers.
 
 **Acceptance Criteria:**
+
 - [x] `src/registers.rs` contains typed `pub const` constants ported from [`megaind.h`](https://github.com/SequentMicrosystems/megaind-rpi/blob/main/src/megaind.h)
 - [x] Covers: relay set/clr (`0x01`/`0x02`), opto input (`0x03`), OD PWM (`0x14`), analog I/O base addresses, diagnostics (`0x72`–`0x79`), RTC, watchdog, CPU reset, 1-Wire
 - [x] 16-Relay HAT address constants included (base address `0x20`, relay set/clr registers)
@@ -63,6 +66,7 @@
 **so that** the gateway can access all analog/digital I/O without CLI tools.
 
 **Acceptance Criteria:**
+
 - [x] `src/hal/megaind.rs` — struct wrapping `i2cdev::linux::LinuxI2CDevice`
 - [x] `new(bus: &str, stack_id: u8)` constructor opens `/dev/i2c-1` at address `0x50 + stack_id`
 - [x] `read_opto_inputs() -> (u8, [bool; 8])` — reads `I2C_MEM_OPTO_IN_VAL` (1 byte), returns bitmask + bool array
@@ -84,6 +88,7 @@
 **so that** relay outputs are driven directly without the `16relind` CLI tool.
 
 **Acceptance Criteria:**
+
 - [x] `src/hal/relay16.rs` — struct wrapping `i2cdev::linux::LinuxI2CDevice`
 - [x] `new(bus: &str, stack_id: u8)` constructor opens `/dev/i2c-1` at address `0x20 + stack_id`
 - [x] `set_relay(channel: u8, state: bool)` — writes relay set/clr register with channel bitmask
@@ -101,6 +106,7 @@
 **so that** the gateway only issues I²C writes when a Modbus client actually changes a coil — preventing I²C bus saturation.
 
 **Acceptance Criteria:**
+
 - [x] `src/cache.rs` — `OutputCache` struct holding `[Option<bool>; 16]` for relays and `[Option<bool>; 4]` for OD outputs
 - [x] `should_update_relay(index, new_state) -> bool` returns `true` only if state differs from cached value
 - [x] On successful I²C write, cache is updated via `confirm_relay()`/`confirm_od()`
@@ -118,6 +124,7 @@
 **so that** my existing SCADA/PLC configuration works without changes.
 
 **Acceptance Criteria:**
+
 - [x] `src/modbus.rs` — custom Modbus TCP server with raw MBAP framing (lighter than `tokio-modbus`)
 - [x] **Coils (R/W):** addresses 0–15 → 16-Relay board; addresses 16–19 → OD outputs 1–4
 - [x] **Discrete Inputs (RO):** addresses 0–7 → Opto-Inputs 1–8
@@ -138,6 +145,7 @@
 **so that** sensor data is fresh and relay commands are applied within 100 ms.
 
 **Acceptance Criteria:**
+
 - [x] `src/main.rs` — `std::thread::sleep` drives 10 Hz loop on dedicated OS thread (Modbus async on tokio)
 - [x] Each tick: read all inputs → update Modbus data bank → apply coil writes via cache
 - [x] Loop timing is compensated (interval ticks, not sleep-after-work)
@@ -156,8 +164,10 @@
 **so that** I can monitor the system at a glance from the console or journal.
 
 **Acceptance Criteria:**
+
 - [x] Every 5 seconds, log a block matching the Python format:
-  ```
+
+  ```diag
   --- SYSTEM HEARTBEAT ---
   POWER: 24.12V
   4-20mA (1-8) : [ 4.0  4.0  0.0 ...] mA
@@ -167,6 +177,7 @@
   OD OUT (1-4) : 0000
   ------------------------
   ```
+
 - [x] Uses `tracing::info!` macro
 - [x] Interval is configurable via `--log-interval` (default 5 s)
 
@@ -181,6 +192,7 @@
 **so that** I can configure the gateway at launch without editing code.
 
 **Acceptance Criteria:**
+
 - [x] `clap` derive-based CLI struct in `src/cli.rs`
 - [x] `--host <IP>` (default `0.0.0.0`)
 - [x] `--port <PORT>` (default `502`)
@@ -201,6 +213,7 @@
 **so that** I can confirm correctness against real hardware.
 
 **Acceptance Criteria:**
+
 - [ ] Binary cross-compiles with `cross build --release --target aarch64-unknown-linux-gnu`
 - [x] Binary runs on Raspberry Pi 4 (64-bit Raspberry Pi OS)
 - [x] ~~Side-by-side test: run Python gateway and Rust gateway on same hardware~~ — *Superseded by `sequent-gateway validate` (37/37 HW tests ✅ 2026-03-07); Python gateway removed*
@@ -224,6 +237,7 @@
 **so that** the Pi operates as a headless industrial appliance.
 
 **Acceptance Criteria:**
+
 - [x] `deploy/sequent-gateway.service` unit file
 - [x] `Type=exec`, `Restart=on-failure`, `RestartSec=3`
 - [x] `After=network-online.target`
@@ -242,6 +256,7 @@
 **so that** the system self-heals without a manual reboot.
 
 **Acceptance Criteria:**
+
 - [x] Detect hung bus: N consecutive I²C read failures within a window
 - [x] Recovery: toggle SCL line via GPIO to clock out stuck slave (9-clock-pulse recovery)
 - [x] Log recovery attempt at `WARN` level
@@ -261,6 +276,7 @@
 **so that** I can address them independently in my PLC program.
 
 **Acceptance Criteria:**
+
 - [x] `--relay-slave-id <ID>` (default `1`)
 - [x] `--ind-slave-id <ID>` (default `2`)
 - [x] Modbus requests are routed by unit ID to the appropriate board's registers
@@ -277,6 +293,7 @@
 **so that** I can address non-default stack positions.
 
 **Acceptance Criteria:**
+
 - [x] `--ind-stack` and `--relay-stack` flags (already included in Story 9)
 - [x] Stack ID validated 0–7 at startup; exit with clear error if out of range
 - [x] Logged at startup: "Industrial HAT at I²C 0x51, Relay HAT at I²C 0x29"
@@ -294,6 +311,7 @@
 **so that** I can diagnose issues after the fact.
 
 **Acceptance Criteria:**
+
 - [x] `--log-file <PATH>` flag (default: none / stdout only)
 - [x] `tracing-appender` for daily or size-based rotation
 - [x] Retain last 7 log files by default
@@ -309,6 +327,7 @@
 **so that** I can poll gateway status from dashboards and alerting tools.
 
 **Acceptance Criteria:**
+
 - [x] `--health-port <PORT>` (default: disabled)
 - [x] `GET /health` returns JSON: `{ "status": "ok", "uptime_s": 1234, "last_cycle_ms": 0.4, "i2c_errors": 0 }`
 - [x] Lightweight: raw `tokio::net::TcpListener` — no heavy framework
@@ -324,6 +343,7 @@
 **so that** a single sensor timeout doesn't block the entire poll loop.
 
 **Acceptance Criteria:**
+
 - [x] Per-channel read timeout (default 50 ms)
 - [x] If a read exceeds the timeout, return last-known-good value and log at `WARN`
 - [x] Consecutive timeout counter per channel; after N failures, mark channel as `FAULT` in heartbeat
@@ -342,6 +362,7 @@
 **so that** I can control analog outputs from my PLC program.
 
 **Acceptance Criteria:**
+
 - [x] Holding registers for 0-10 V outputs (4 channels) — writable (HR 16–19)
 - [x] Holding registers for 4-20 mA outputs (4 channels) — writable (HR 20–23)
 - [x] Values written as integer × 100 (matching input scaling convention)
@@ -359,6 +380,7 @@
 **so that** I can use a single gateway binary for any Sequent hardware combination.
 
 **Acceptance Criteria:**
+
 - [x] HAL trait (`SequentBoard`) that `MegaIndBoard` and `RelayBoard` implement
 - [x] New boards added by implementing the trait + adding a register map TOML
 - [x] Board type selectable via CLI (`--board relay16 --board megaind --board relay8`)
@@ -389,6 +411,7 @@
 **Business Value:** Epic 1 delivered a working gateway, but several reliability and extensibility features were built without being connected. This epic closes that gap: operators get real-time I²C health metrics in `/health`, relay state is verified against hardware, and integrators can deploy new board types by dropping in a TOML file — no recompilation required.
 
 **Acceptance Criteria (Epic-level):**
+
 - `/health` JSON reports live I²C error count and bus recovery count
 - Channel watchdog faults are iterated generically (no hard-coded channel lists)
 - Relay output state is periodically verified against hardware read-back
@@ -410,6 +433,7 @@
 **so that** I can monitor bus reliability from dashboards and set up alerts.
 
 **Acceptance Criteria:**
+
 - [x] Every `Err` branch in the poll loop's I²C reads calls `health_stats.inc_i2c_errors()`
 - [x] Every `Err` branch in the poll loop's I²C writes calls `health_stats.inc_i2c_errors()`
 - [x] `GET /health` JSON field `i2c_errors` reflects the cumulative count
@@ -427,6 +451,7 @@
 **so that** I can see how often the bus is being reset without tailing logs.
 
 **Acceptance Criteria:**
+
 - [x] `I2cWatchdog::recovery_count()` value is included in `/health` JSON as `"i2c_recoveries"`
 - [x] Heartbeat log includes recovery count when > 0
 - [x] Unit test: verify JSON field is present and correct after simulated recoveries
@@ -442,6 +467,7 @@
 **so that** adding a new channel type in the future doesn't require editing every loop.
 
 **Acceptance Criteria:**
+
 - [x] `HealthStats::update_channel_status()` uses `Channel::ALL` for its iteration
 - [x] Heartbeat `log_heartbeat()` uses `Channel::ALL` where applicable
 - [x] No remaining hard-coded `[Channel::Ma, Channel::Volt, Channel::Psu, Channel::Opto]` arrays outside of the `ALL` definition
@@ -460,6 +486,7 @@
 **so that** a stuck relay or I²C glitch is detected and logged rather than silently ignored.
 
 **Acceptance Criteria:**
+
 - [x] Every N-th poll tick (configurable, default every 10th = 1 Hz), call `relay_board.read_relay_state()`
 - [x] Compare returned bitmask against `OutputCache` expected state
 - [x] On mismatch: log at `WARN` with expected vs actual bitmask, increment a `relay_mismatch` counter
@@ -479,6 +506,7 @@
 **so that** my PLC can verify relay state independently of the coil writes.
 
 **Acceptance Criteria:**
+
 - [x] New read-only Holding Register (HR 24 or configurable) contains the last `read_relay_state()` bitmask
 - [x] Updated at the same frequency as the verify interval (Story 23)
 - [x] Documented in README memory map
@@ -497,6 +525,7 @@
 **so that** the poll loop can operate on boards generically without type-specific branching.
 
 **Acceptance Criteria:**
+
 - [x] `SequentBoard` trait gains: `fn poll_inputs(&mut self, db: &mut DataBank) -> Result<()>`
 - [x] `SequentBoard` trait gains: `fn apply_outputs(&mut self, db: &DataBank, cache: &mut OutputCache) -> Result<()>`
 - [x] Default implementations return `Ok(())` (no-op for boards that don't support a capability)
@@ -516,6 +545,7 @@
 **so that** I can add new hardware by dropping in a TOML file without recompiling.
 
 **Acceptance Criteria:**
+
 - [x] `src/board_registry.rs` — `BoardRegistry` struct holding `Vec<Box<dyn SequentBoard>>`
 - [x] Boards constructed from `--board` flags + TOML definitions and pushed into the registry
 - [x] Poll loop iterates `registry.boards()` calling `poll_inputs()` and `apply_outputs()`
@@ -535,6 +565,7 @@
 **so that** stack IDs come from the actual board instance rather than duplicated CLI args.
 
 **Acceptance Criteria:**
+
 - [x] Startup log uses `board.name()` and `board.stack_id()` from the registry
 - [x] Heartbeat log references board identity from trait objects
 - [x] `args.ind_stack` / `args.relay_stack` still used for board construction, but not for logging after init
