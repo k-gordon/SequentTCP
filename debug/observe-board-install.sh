@@ -304,10 +304,10 @@ validate_board_tomls() {
         
         # Basic TOML validation - check for required fields
         if grep -q "^\[board\]" "$board_file" || grep -q "^\[info\]" "$board_file"; then
-            log_verbose "  ✓ $board_name - appears valid"
+            log_verbose "  OK - $board_name - appears valid"
             ((valid_count++))
         else
-            log_warning "  ✗ $board_name - missing board/info section"
+            log_warning "  X - $board_name - missing board/info section"
             ((invalid_count++))
         fi
     done
@@ -361,60 +361,53 @@ generate_report() {
     echo "Boards Directory: $INSTALL_BOARDS_DIR"
     echo ""
     
-    echo "┌─ Workspace Status ──────────────────────────────────────┐"
+    echo "  Workspace Status"
     if check_workspace_boards >/dev/null 2>&1; then
-        echo "│ ✓ Workspace boards directory exists                     │"
+        echo "        OK - Workspace boards directory exists"
     else
-        echo "│ ✗ Workspace boards directory missing                    │"
+        echo "        X - Workspace boards directory missing"
     fi
-    echo "└───────────────────────────────────────────────────────────┘"
     echo ""
     
-    echo "┌─ Install Location Status ─────────────────────────────────┐"
+    echo "  Install Location Status"
     if check_install_boards >/dev/null 2>&1; then
-        echo "│ ✓ Install boards directory exists                       │"
+        echo "        OK - Install boards directory exists"
     else
-        echo "│ ✗ Install boards directory missing                      │"
+        echo "        X - Install boards directory missing"
     fi
-    echo "└───────────────────────────────────────────────────────────┘"
     echo ""
     
-    echo "┌─ Configuration Status ────────────────────────────────────┐"
+    echo "  Configuration Status"
     if check_config_file >/dev/null 2>&1; then
-        echo "│ ✓ Configuration file exists                             │"
+        echo "        OK - Configuration file exists"
     else
-        echo "│ ✗ Configuration file missing                            │"
+        echo "        X - Configuration file missing"
     fi
-    echo "└───────────────────────────────────────────────────────────┘"
     echo ""
     
-    echo "┌─ Environment Status ──────────────────────────────────────┐"
+    echo "  Environment Status "
     if check_env_file >/dev/null 2>&1; then
-        echo "│ ✓ Environment file exists                               │"
+        echo "        OK - Environment file exists   "
     else
-        echo "│ ✗ Environment file missing                              │"
+        echo "        X - Environment file missing  "
     fi
-    echo "└───────────────────────────────────────────────────────────┘"
     echo ""
     
-    echo "┌─ Binary Status ───────────────────────────────────────────┐"
+    echo "  Binary Status"
     if check_binary >/dev/null 2>&1; then
-        echo "│ ✓ Binary installed and executable                       │"
+        echo "        OK - Binary installed and executable"
     else
-        echo "│ ✗ Binary not installed                                  │"
+        echo "        X - Binary not installed"
     fi
-    echo "└───────────────────────────────────────────────────────────┘"
     echo ""
     
-    echo "┌─ Service Status ──────────────────────────────────────────┐"
+    echo "  Service Status"
     if check_service >/dev/null 2>&1; then
-        echo "│ ✓ Service configured                                    │"
+        echo "        OK - Service configured"
     else
-        echo "│ ✗ Service not configured                                │"
+        echo "        X - Service not configured"
     fi
-    echo "└───────────────────────────────────────────────────────────┘"
     echo ""
-    echo "═══════════════════════════════════════════════════════════"
 }
 
 # Main execution
