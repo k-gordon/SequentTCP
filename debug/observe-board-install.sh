@@ -207,26 +207,44 @@ emulate_binary_access() {
         # Check if boards_dir is configured
         if grep -q "boards_dir" "$CONFIG_FILE"; then
             local configured_boards_dir=$(grep "boards_dir" "$CONFIG_FILE" | cut -d'=' -f2 | tr -d ' "' | tr -d "'")
-            log_diagnostic "Configured boards_dir: $configured_boards_dir"
+            log_diagnostic "Configured boards_dir in TOML: $configured_boards_dir"
             
             if [[ "$configured_boards_dir" != "$INSTALL_BOARDS_DIR" ]]; then
-                log_warning "boards_dir mismatch detected"
+                log_warning "boards_dir mismatch detected in config file"
                 log_diagnostic "Expected: $INSTALL_BOARDS_DIR"
                 log_diagnostic "Found: $configured_boards_dir"
                 log_diagnostic "Reason: Configuration file points to different boards directory"
-                log_diagnostic "Solution: Update boards_dir in $CONFIG_FILE or use --boards-dir CLI flag"
+                log_diagnostic "Solution: Update boards_dir in $CONFIG_FILE to $INSTALL_BOARDS_DIR"
             else
                 log_success "boards_dir configuration matches install location"
             fi
         else
-            log_diagnostic "boards_dir not explicitly configured (using default)"
-            log_diagnostic "Default behavior: Binary will look for ./boards relative to working directory"
+            log_warning "boards_dir not explicitly configured in TOML file"
+            log_diagnostic "Reason: Config file doesn't specify boards_dir"
+            log_diagnostic "Impact: Binary will use CLI default (--boards-dir boards)"
+            log_diagnostic "Solution: Add 'boards_dir = \"$INSTALL_BOARDS_DIR\"' to $CONFIG_FILE"
         fi
     else
         log_warning "Configuration file not found: $CONFIG_FILE"
         log_diagnostic "Reason: No configuration file exists yet"
-        log_diagnostic "Solution: Run TUI configuration or create config manually"
+        log_diagnostic "Impact: Binary will use CLI default (--boards-dir boards)"
+        log_diagnostic "Solution: Run TUI configuration or create config with boards_dir set"
     fi
+    echo ""
+    
+    # Step 6b: Explain new multi-path search behavior
+    log_diagnostic "Step 6b: Multi-path search behavior (NEW)"
+    log_info "Binary now searches multiple paths in this order:"
+    echo ""
+    echo "  1. Explicit --boards-dir (if specified)"
+    echo "  2. Config file boards_dir (if specified)"
+    echo "  3. Relative ./boards (if exists)"
+    echo "  4. /etc/sequent-gateway/boards (if exists)"
+    echo ""
+    log_success "This means:"
+    log_diagnostic "  - Development: Works from project root with ./boards"
+    log_diagnostic "  - Production: Falls back to /etc/sequent-gateway/boards"
+    log_diagnostic "  - Override: --boards-dir still takes highest priority"
     echo ""
     
     # Step 7: Check environment file (for systemd)

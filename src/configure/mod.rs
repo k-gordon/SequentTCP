@@ -39,10 +39,16 @@ use app::{App, Screen};
 /// Standard system install path for the gateway binary.
 #[cfg(target_os = "linux")]
 const INSTALL_BIN: &str = "/usr/local/bin/sequent-gateway";
+#[cfg(not(target_os = "linux"))]
+const INSTALL_BIN: &str = "/usr/local/bin/sequent-gateway";
+
 /// Standard system path for board definitions.
 const INSTALL_BOARDS_DIR: &str = "/etc/sequent-gateway/boards";
+
 /// Standard system path for the configuration file.
 #[cfg(target_os = "linux")]
+const INSTALL_CONFIG_DIR: &str = "/etc/sequent-gateway";
+#[cfg(not(target_os = "linux"))]
 const INSTALL_CONFIG_DIR: &str = "/etc/sequent-gateway";
 
 // ════════════════════════════════════════════════════════════════════════

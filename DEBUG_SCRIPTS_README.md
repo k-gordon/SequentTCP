@@ -164,16 +164,28 @@ ls -la /dev/i2c-*
 
 ### "Workspace boards directory missing"
 
-**Cause:** No `./boards` directory in current working directory
+**Cause:** No `./boards` directory in current working directory AND no boards in `/etc/sequent-gateway/boards`
 
 **Solution:**
 ```bash
-# Option 1: Navigate to project root
+# Option 1: Navigate to project root (where ./boards exists)
 cd /path/to/SequentTCP
 
 # Option 2: Install boards to system location
 sudo ./observe-board-install.sh
+
+# Option 3: The binary now searches both locations automatically!
+# It will find boards in ./boards OR /etc/sequent-gateway/boards
 ```
+
+**Note:** The binary now uses **multi-path search**:
+
+1. Explicit `--boards-dir` (if specified)
+2. Config file `boards_dir` (if specified)
+3. Relative `./boards` (if exists)
+4. `/etc/sequent-gateway/boards` (if exists)
+
+This means boards will be found whether you're in development or production mode!
 
 ### "Binary not installed"
 

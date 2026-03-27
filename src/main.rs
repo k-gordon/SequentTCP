@@ -14,6 +14,7 @@ mod registers;
 mod slave_map;
 mod validate;
 
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -145,30 +146,40 @@ async fn main() -> Result<()> {
         args.boards.iter().map(|s| s.to_lowercase()).collect()
     };
 
+    // Resolve the list of directories to search for board definitions.
+    let boards_search_paths = resolve_boards_search_paths(&args.boards_dir, file_config.as_ref().map(|c| c.boards_dir.as_path()));
+
     // Load board definitions dynamically from TOML files.
     let mut board_instances: Vec<BoardInstance> = Vec::new();
     for bt in &board_types {
-        let toml_path = args.boards_dir.join(format!("{bt}.toml"));
+        // Search for board TOML in all paths
+        let toml_path = find_board_toml(bt, &boards_search_paths);
+        
         #[allow(deprecated)]
-        let def = if toml_path.exists() {
-            BoardDef::load(&toml_path)?
+        let def = if let Some(path) = toml_path {
+            info!("Loading board definition from: {}", path.display());
+            BoardDef::load(&path)?
         } else if args.builtin_defaults {
+            info!("No TOML found for '{}', using built-in defaults", bt);
             match bt.as_str() {
                 "megaind" => BoardDef::default_megaind(),
                 "relay16" => BoardDef::default_relay16(),
                 "relay8" => BoardDef::default_relay8(),
                 other => anyhow::bail!(
                     "No TOML found for '{other}' and no built-in defaults available.\n\
-                     Place a {other}.toml in {} or run with --install-boards.",
-                    args.boards_dir.display()
+                     Search paths: {:?}\n\
+                     Place a {other}.toml in one of these directories.",
+                    boards_search_paths
                 ),
             }
         } else {
             anyhow::bail!(
-                "Board definition not found: {}\n\
-                 Place a {bt}.toml in {} or pass --builtin-defaults.",
-                toml_path.display(),
-                args.boards_dir.display()
+                "Board definition not found for '{}'.\n\
+                 Searched in: {:?}\n\
+                 Place a {}.toml in one of these directories, use --boards-dir, or pass --builtin-defaults.",
+                bt,
+                boards_search_paths,
+                bt
             );
         };
 
@@ -633,4 +644,81 @@ fn cleanup_old_logs(log_dir: &std::path::Path, prefix: &str, keep: usize) {
             tracing::debug!("Removed old log file: {}", path.display());
         }
     }
+}
+
+/// Resolve the list of directories to search for board definitions.
+///
+/// Search order:
+/// 1. If --boards-dir was explicitly specified, use that as primary
+/// 2. Always check relative ./boards (if it exists)
+/// 3. Fall back to /etc/sequent-gateway/boards (if it exists)
+///
+/// This allows:
+/// - Development: ./boards works from project root
+/// - Production: /etc/sequent-gateway/boards works system-wide
+/// - Override: --boards-dir /custom/path takes priority
+fn resolve_boards_search_paths(cli_boards_dir: &Path, config_boards_dir: Option<&Path>) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    
+    // Track if CLI was explicitly set (not default)
+    let cli_explicit = cli_boards_dir != Path::new("boards");
+    
+    // 1. Explicit CLI path (highest priority if specified)
+    if cli_explicit {
+        paths.push(cli_boards_dir.to_path_buf());
+        debug!("Using explicit CLI boards-dir: {}", cli_boards_dir.display());
+    }
+    
+    // 2. Config file path (if specified and not same as CLI)
+    if let Some(cfg_dir) = config_boards_dir {
+        let cfg_path = cfg_dir.to_path_buf();
+        if cfg_path != cli_boards_dir.to_path_buf() && !paths.contains(&cfg_path) {
+            paths.push(cfg_path);
+            debug!("Using config file boards_dir: {}", cfg_dir.display());
+        }
+    }
+    
+    // 3. Always try relative ./boards (if exists)
+    let relative_boards = PathBuf::from("./boards");
+    if relative_boards.exists() && relative_boards.is_dir() {
+        if !paths.contains(&relative_boards) {
+            paths.push(relative_boards.clone());
+            debug!("Found relative boards directory: {}", relative_boards.display());
+        }
+    }
+    
+    // 4. Always try /etc/sequent-gateway/boards (if exists)
+    let system_boards = PathBuf::from("/etc/sequent-gateway/boards");
+    if system_boards.exists() && system_boards.is_dir() {
+        if !paths.contains(&system_boards) {
+            paths.push(system_boards.clone());
+            debug!("Found system boards directory: {}", system_boards.display());
+        }
+    }
+    
+    // If no paths found yet, add the CLI default as fallback
+    if paths.is_empty() {
+        paths.push(cli_boards_dir.to_path_buf());
+        debug!("Using default boards-dir: {}", cli_boards_dir.display());
+    }
+    
+    debug!("Board search paths: {:?}", paths);
+    paths
+}
+
+/// Find a board TOML file by searching multiple directories.
+/// Returns the full path if found, or None.
+fn find_board_toml(board_type: &str, search_paths: &[PathBuf]) -> Option<PathBuf> {
+    let filename = format!("{}.toml", board_type);
+    
+    for path in search_paths {
+        let candidate = path.join(&filename);
+        if candidate.exists() {
+            debug!("Found board TOML at: {}", candidate.display());
+            return Some(candidate);
+        }
+        debug!("Board TOML not found at: {}", candidate.display());
+    }
+    
+    None
 }
