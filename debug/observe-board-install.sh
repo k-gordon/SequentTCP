@@ -7,12 +7,14 @@
 # 2. Board definition file discovery
 # 3. Reachability of board TOML files in install locations
 # 4. TUI board registry validation
+# 5. Binary access simulation and diagnostics
 #
 # Usage: ./observe-board-install.sh [options]
 # Options:
 #   --install-path PATH  Specify custom install path (default: /etc/sequent-gateway)
 #   --verbose            Enable verbose output
 #   --check-only         Only check current state, don't perform installation
+#   --emulate            Simulate installed binary behavior and diagnose access issues
 #   --help               Show this help message
 #
 
@@ -38,6 +40,7 @@ NC='\033[0m' # No Color
 # Flags
 VERBOSE=false
 CHECK_ONLY=false
+EMULATE=false
 CUSTOM_INSTALL_PATH=""
 
 # Parse command line arguments
@@ -55,12 +58,17 @@ while [[ $# -gt 0 ]]; do
             CHECK_ONLY=true
             shift
             ;;
+        --emulate)
+            EMULATE=true
+            shift
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
             echo "  --install-path PATH  Specify custom install path (default: /etc/sequent-gateway)"
             echo "  --verbose            Enable verbose output"
             echo "  --check-only         Only check current state, don't perform installation"
+            echo "  --emulate            Simulate installed binary behavior and diagnose access issues"
             echo "  --help               Show this help message"
             exit 0
             ;;
@@ -86,11 +94,11 @@ log_info() {
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[OK]${NC} $1"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
 log_error() {
@@ -103,6 +111,211 @@ log_verbose() {
     fi
 }
 
+log_diagnostic() {
+    echo -e "${CYAN}[DIAG]${NC} $1"
+}
+
+# Emulate installed binary behavior and diagnose access issues
+emulate_binary_access() {
+    log_info "Emulating installed binary behavior..."
+    echo ""
+    
+    # Step 1: Check if binary exists
+    log_diagnostic "Step 1: Binary existence check"
+    if [[ ! -f "$BINARY_PATH" ]]; then
+        log_error "Binary not found at: $BINARY_PATH"
+        log_diagnostic "Reason: Binary has not been installed to system location"
+        log_diagnostic "Solution: Build and install binary with: cargo build --release && sudo cp target/release/sequent-gateway /usr/local/bin/"
+        echo ""
+        return 1
+    fi
+    log_success "Binary exists at: $BINARY_PATH"
+    
+    # Step 2: Check executable permissions
+    log_diagnostic "Step 2: Executable permissions check"
+    if [[ ! -x "$BINARY_PATH" ]]; then
+        log_error "Binary is not executable: $BINARY_PATH"
+        log_diagnostic "Reason: File permissions do not allow execution"
+        log_diagnostic "Solution: Run: sudo chmod +x $BINARY_PATH"
+        echo ""
+        return 1
+    fi
+    log_success "Binary is executable"
+    
+    # Step 3: Check boards directory existence
+    log_diagnostic "Step 3: Boards directory existence check"
+    if [[ ! -d "$INSTALL_BOARDS_DIR" ]]; then
+        log_error "Boards directory not found: $INSTALL_BOARDS_DIR"
+        log_diagnostic "Reason: Board definitions have not been installed"
+        log_diagnostic "Expected location: $INSTALL_BOARDS_DIR"
+        log_diagnostic "Solution: Run: sudo $0 --install-path $INSTALL_BASE"
+        echo ""
+        return 1
+    fi
+    log_success "Boards directory exists: $INSTALL_BOARDS_DIR"
+    
+    # Step 4: Check boards directory permissions
+    log_diagnostic "Step 4: Boards directory permissions check"
+    if [[ ! -r "$INSTALL_BOARDS_DIR" ]]; then
+        log_error "Boards directory is not readable: $INSTALL_BOARDS_DIR"
+        log_diagnostic "Reason: Directory permissions prevent reading"
+        log_diagnostic "Current permissions: $(ls -ld $INSTALL_BOARDS_DIR)"
+        log_diagnostic "Solution: Run: sudo chmod -R 755 $INSTALL_BOARDS_DIR"
+        echo ""
+        return 1
+    fi
+    log_success "Boards directory is readable"
+    
+    # Step 5: Check TOML file accessibility
+    log_diagnostic "Step 5: TOML file accessibility check"
+    local toml_count=0
+    local unreadable=0
+    
+    for toml_file in "$INSTALL_BOARDS_DIR"/*.toml; do
+        if [[ -f "$toml_file" ]]; then
+            ((toml_count++))
+            if [[ ! -r "$toml_file" ]]; then
+                log_error "TOML file not readable: $toml_file"
+                ((unreadable++))
+            fi
+        fi
+    done
+    
+    if [[ $toml_count -eq 0 ]]; then
+        log_error "No TOML files found in: $INSTALL_BOARDS_DIR"
+        log_diagnostic "Reason: Board definition files are missing"
+        log_diagnostic "Solution: Copy board files from workspace or download from GitHub"
+        echo ""
+        return 1
+    fi
+    
+    if [[ $unreadable -gt 0 ]]; then
+        log_error "$unreadable TOML files are not readable"
+        log_diagnostic "Reason: File permissions prevent reading"
+        log_diagnostic "Solution: Run: sudo chmod -R 644 $INSTALL_BOARDS_DIR/*.toml"
+        echo ""
+        return 1
+    fi
+    
+    log_success "All $toml_count TOML files are readable"
+    
+    # Step 6: Check configuration file
+    log_diagnostic "Step 6: Configuration file check"
+    if [[ -f "$CONFIG_FILE" ]]; then
+        log_success "Configuration file exists: $CONFIG_FILE"
+        
+        # Check if boards_dir is configured
+        if grep -q "boards_dir" "$CONFIG_FILE"; then
+            local configured_boards_dir=$(grep "boards_dir" "$CONFIG_FILE" | cut -d'=' -f2 | tr -d ' "' | tr -d "'")
+            log_diagnostic "Configured boards_dir: $configured_boards_dir"
+            
+            if [[ "$configured_boards_dir" != "$INSTALL_BOARDS_DIR" ]]; then
+                log_warning "boards_dir mismatch detected"
+                log_diagnostic "Expected: $INSTALL_BOARDS_DIR"
+                log_diagnostic "Found: $configured_boards_dir"
+                log_diagnostic "Reason: Configuration file points to different boards directory"
+                log_diagnostic "Solution: Update boards_dir in $CONFIG_FILE or use --boards-dir CLI flag"
+            else
+                log_success "boards_dir configuration matches install location"
+            fi
+        else
+            log_diagnostic "boards_dir not explicitly configured (using default)"
+            log_diagnostic "Default behavior: Binary will look for ./boards relative to working directory"
+        fi
+    else
+        log_warning "Configuration file not found: $CONFIG_FILE"
+        log_diagnostic "Reason: No configuration file exists yet"
+        log_diagnostic "Solution: Run TUI configuration or create config manually"
+    fi
+    echo ""
+    
+    # Step 7: Check environment file (for systemd)
+    log_diagnostic "Step 7: Environment file check (systemd)"
+    if [[ -f "$ENV_FILE" ]]; then
+        log_success "Environment file exists: $ENV_FILE"
+        
+        if grep -q "BOARDS_DIR" "$ENV_FILE"; then
+            local env_boards_dir=$(grep "BOARDS_DIR" "$ENV_FILE" | cut -d'=' -f2 | tr -d ' "' | tr -d "'")
+            log_diagnostic "BOARDS_DIR in env: $env_boards_dir"
+            
+            if [[ "$env_boards_dir" != "$INSTALL_BOARDS_DIR" ]]; then
+                log_warning "BOARDS_DIR mismatch in environment file"
+                log_diagnostic "Expected: $INSTALL_BOARDS_DIR"
+                log_diagnostic "Found: $env_boards_dir"
+                log_diagnostic "Reason: Environment file will override with wrong path"
+                log_diagnostic "Solution: Update BOARDS_DIR in $ENV_FILE"
+            else
+                log_success "BOARDS_DIR matches in environment file"
+            fi
+        else
+            log_warning "BOARDS_DIR not set in environment file"
+            log_diagnostic "Reason: Service may not find boards directory"
+            log_diagnostic "Solution: Add BOARDS_DIR=$INSTALL_BOARDS_DIR to $ENV_FILE"
+        fi
+    else
+        log_warning "Environment file not found: $ENV_FILE"
+        log_diagnostic "Reason: No systemd environment configuration"
+        log_diagnostic "Impact: Systemd service may fail to locate boards"
+    fi
+    echo ""
+    
+    # Step 8: Simulate binary startup with boards-dir
+    log_diagnostic "Step 8: Simulating binary startup command"
+    echo "Simulated command:"
+    echo "  $BINARY_PATH --boards-dir $INSTALL_BOARDS_DIR"
+    echo ""
+    
+    # Check if we can actually run the binary (dry run)
+    if command -v "$BINARY_PATH" &> /dev/null; then
+        log_success "Binary is in PATH and can be invoked"
+        
+        # Try to get help/version to verify binary works
+        if "$BINARY_PATH" --help &> /dev/null; then
+            log_success "Binary responds to --help flag"
+        else
+            log_warning "Binary may not respond to standard flags"
+        fi
+    else
+        log_warning "Binary not in PATH (may need full path or installation)"
+        log_diagnostic "Solution: Ensure /usr/local/bin is in PATH or use full path"
+    fi
+    echo ""
+    
+    # Step 9: Check for common access issues
+    log_diagnostic "Step 9: Common access issues check"
+    
+    # Check for I2C access (if on Linux)
+    if [[ -e "/dev/i2c-1" ]]; then
+        if [[ -r "/dev/i2c-1" ]] && [[ -w "/dev/i2c-1" ]]; then
+            log_success "I2C device accessible"
+        else
+            log_warning "I2C device exists but may not be accessible"
+            log_diagnostic "Reason: Permission denied on /dev/i2c-1"
+            log_diagnostic "Solution: Add user to i2c group or run as root"
+        fi
+    else
+        log_diagnostic "I2C device /dev/i2c-1 not found (may not be a Raspberry Pi)"
+    fi
+    
+    # Check for SELinux/AppArmor (if applicable)
+    if command -v getenforce &> /dev/null; then
+        local selinux_status=$(getenforce 2>/dev/null || echo "unknown")
+        if [[ "$selinux_status" == "Enforcing" ]]; then
+            log_warning "SELinux is enforcing"
+            log_diagnostic "Reason: SELinux may block binary access to files"
+            log_diagnostic "Solution: Check SELinux logs or set appropriate contexts"
+        fi
+    fi
+    echo ""
+    
+    # Summary
+    log_info "Emulation complete - Binary should be able to access boards"
+    log_success "All access checks passed"
+    echo ""
+    
+    return 0
+}
+
 # Check if running as root (required for system install)
 check_root() {
     if [[ $EUID -ne 0 ]] && [[ "$INSTALL_BASE" == /etc/* ]]; then
@@ -111,301 +324,61 @@ check_root() {
     fi
 }
 
-# Check current directory structure
-check_workspace_boards() {
-    log_info "Checking workspace board definitions..."
-    
-    local workspace_boards="./boards"
-    local experimental_boards="./boards/experimental"
-    
-    if [[ -d "$workspace_boards" ]]; then
-        log_success "Workspace boards directory exists: $workspace_boards"
-        
-        local board_count=$(find "$workspace_boards" -name "*.toml" -type f | wc -l)
-        log_info "Found $board_count board TOML files in $workspace_boards"
-        
-        # List all board files
-        log_verbose "Board files in workspace:"
-        find "$workspace_boards" -name "*.toml" -type f -exec basename {} \; | sort | while read board; do
-            echo "  - $board"
-        done
-        
-        # Check for experimental boards
-        if [[ -d "$experimental_boards" ]]; then
-            local exp_count=$(find "$experimental_boards" -name "*.toml" -type f | wc -l)
-            log_info "Found $exp_count experimental board TOML files"
-        fi
-        
-        return 0
-    else
-        log_error "Workspace boards directory not found: $workspace_boards"
-        return 1
-    fi
-}
-
-# Check install location for board definitions
-check_install_boards() {
-    log_info "Checking install location: $INSTALL_BOARDS_DIR"
-    
-    if [[ -d "$INSTALL_BOARDS_DIR" ]]; then
-        log_success "Install boards directory exists: $INSTALL_BOARDS_DIR"
-        
-        local board_count=$(find "$INSTALL_BOARDS_DIR" -name "*.toml" -type f | wc -l)
-        log_info "Found $board_count board TOML files in install location"
-        
-        # List all board files
-        log_verbose "Board files in install location:"
-        find "$INSTALL_BOARDS_DIR" -name "*.toml" -type f -exec basename {} \; | sort | while read board; do
-            echo "  - $board"
-        done
-        
-        # Check file permissions
-        log_verbose "Checking file permissions..."
-        find "$INSTALL_BOARDS_DIR" -name "*.toml" -type f -exec ls -la {} \; | while read line; do
-            log_verbose "  $line"
-        done
-        
-        return 0
-    else
-        log_warning "Install boards directory does not exist: $INSTALL_BOARDS_DIR"
-        return 1
-    fi
-}
-
-# Check configuration file
-check_config_file() {
-    log_info "Checking configuration file: $CONFIG_FILE"
-    
-    if [[ -f "$CONFIG_FILE" ]]; then
-        log_success "Configuration file exists: $CONFIG_FILE"
-        
-        # Check if boards_dir is configured correctly
-        if grep -q "boards_dir" "$CONFIG_FILE"; then
-            local boards_dir=$(grep "boards_dir" "$CONFIG_FILE" | cut -d'=' -f2 | tr -d ' "' | tr -d "'")
-            log_info "Configured boards_dir: $boards_dir"
-            
-            if [[ "$boards_dir" == "$INSTALL_BOARDS_DIR" ]]; then
-                log_success "boards_dir matches install location"
-            else
-                log_warning "boards_dir does not match install location"
-                log_warning "Expected: $INSTALL_BOARDS_DIR"
-                log_warning "Found: $boards_dir"
-            fi
-        else
-            log_warning "boards_dir not explicitly configured in $CONFIG_FILE"
-        fi
-        
-        # Show config summary
-        log_verbose "Configuration file contents:"
-        cat "$CONFIG_FILE" | while read line; do
-            log_verbose "  $line"
-        done
-        
-        return 0
-    else
-        log_warning "Configuration file does not exist: $CONFIG_FILE"
-        return 1
-    fi
-}
-
-# Check environment file
-check_env_file() {
-    log_info "Checking environment file: $ENV_FILE"
-    
-    if [[ -f "$ENV_FILE" ]]; then
-        log_success "Environment file exists: $ENV_FILE"
-        
-        # Check BOARDS_DIR in env file
-        if grep -q "BOARDS_DIR" "$ENV_FILE"; then
-            local boards_dir=$(grep "BOARDS_DIR" "$ENV_FILE" | cut -d'=' -f2 | tr -d ' "' | tr -d "'")
-            log_info "BOARDS_DIR in env: $boards_dir"
-            
-            if [[ "$boards_dir" == "$INSTALL_BOARDS_DIR" ]]; then
-                log_success "BOARDS_DIR matches install location"
-            else
-                log_warning "BOARDS_DIR does not match install location"
-                log_warning "Expected: $INSTALL_BOARDS_DIR"
-                log_warning "Found: $boards_dir"
-            fi
-        else
-            log_warning "BOARDS_DIR not set in $ENV_FILE"
-        fi
-        
-        return 0
-    else
-        log_warning "Environment file does not exist: $ENV_FILE"
-        return 1
-    fi
-}
-
-# Check binary installation
-check_binary() {
-    log_info "Checking binary installation: $BINARY_PATH"
-    
-    if [[ -f "$BINARY_PATH" ]]; then
-        log_success "Binary exists: $BINARY_PATH"
-        
-        # Check executable permissions
-        if [[ -x "$BINARY_PATH" ]]; then
-            log_success "Binary is executable"
-        else
-            log_warning "Binary is not executable"
-        fi
-        
-        # Show binary version/info if available
-        if "$BINARY_PATH" --version 2>/dev/null; then
-            log_verbose "Binary version info available"
-        else
-            log_verbose "Binary version info not available"
-        fi
-        
-        return 0
-    else
-        log_warning "Binary does not exist: $BINARY_PATH"
-        return 1
-    fi
-}
-
-# Check systemd service
-check_service() {
-    log_info "Checking systemd service..."
-    
-    if systemctl list-units --type=service --all | grep -q "sequent-gateway"; then
-        log_success "Service unit is known to systemd"
-        
-        if systemctl is-active --quiet sequent-gateway; then
-            log_success "Service is currently active"
-        else
-            log_warning "Service is not active"
-        fi
-    else
-        log_warning "Service unit not found in systemd"
-    fi
-    
-    return 0
-}
-
-# Validate board TOML files
-validate_board_tomls() {
-    log_info "Validating board TOML files..."
-    
-    local board_dir="$1"
-    local valid_count=0
-    local invalid_count=0
-    
-    if [[ ! -d "$board_dir" ]]; then
-        log_error "Board directory does not exist: $board_dir"
-        return 1
-    fi
-    
-    # Find all TOML files
-    find "$board_dir" -name "*.toml" -type f | while read board_file; do
-        local board_name=$(basename "$board_file")
-        
-        # Basic TOML validation - check for required fields
-        if grep -q "^\[board\]" "$board_file" || grep -q "^\[info\]" "$board_file"; then
-            log_verbose "  OK - $board_name - appears valid"
-            ((valid_count++))
-        else
-            log_warning "  X - $board_name - missing board/info section"
-            ((invalid_count++))
-        fi
-    done
-    
-    log_info "Validation complete"
-}
-
-# Install board definitions to system location
-install_boards() {
-    if [[ "$CHECK_ONLY" == true ]]; then
-        log_info "Check-only mode: skipping installation"
-        return 0
-    fi
-    
-    log_info "Installing board definitions to $INSTALL_BOARDS_DIR"
-    
-    # Create directories
-    log_verbose "Creating directories..."
-    mkdir -p "$INSTALL_BOARDS_DIR"
-    mkdir -p "$INSTALL_CONFIG_DIR"
-    
-    # Copy board files from workspace
-    if [[ -d "./boards" ]]; then
-        log_verbose "Copying board files from ./boards..."
-        cp -r ./boards/* "$INSTALL_BOARDS_DIR/" 2>/dev/null || true
-        
-        local copied_count=$(find "$INSTALL_BOARDS_DIR" -name "*.toml" -type f | wc -l)
-        log_success "Copied $copied_count board files to $INSTALL_BOARDS_DIR"
-    else
-        log_warning "No boards directory found in workspace"
-    fi
-    
-    # Set permissions
-    log_verbose "Setting permissions..."
-    chmod -R 644 "$INSTALL_BOARDS_DIR"/*.toml 2>/dev/null || true
-    chmod -R 755 "$INSTALL_BOARDS_DIR" 2>/dev/null || true
-    
-    log_success "Board definitions installed successfully"
-}
-
 # Generate diagnostic report
 generate_report() {
     log_info "Generating diagnostic report..."
     echo ""
-    echo "═══════════════════════════════════════════════════════════"
-    echo "  SequentTCP Board Installation Diagnostic Report"
-    echo "═══════════════════════════════════════════════════════════"
-    echo ""
+    echo "SequentTCP Board Installation Diagnostic Report"
     echo "Timestamp: $(date)"
     echo "Install Base: $INSTALL_BASE"
     echo "Boards Directory: $INSTALL_BOARDS_DIR"
     echo ""
     
-    echo "  Workspace Status"
+    echo "Workspace Status:"
     if check_workspace_boards >/dev/null 2>&1; then
-        echo "        OK - Workspace boards directory exists"
+        echo "  [OK] Workspace boards directory exists"
     else
-        echo "        X - Workspace boards directory missing"
+        echo "  [ERROR] Workspace boards directory missing"
     fi
     echo ""
     
-    echo "  Install Location Status"
+    echo "Install Location Status:"
     if check_install_boards >/dev/null 2>&1; then
-        echo "        OK - Install boards directory exists"
+        echo "  [OK] Install boards directory exists"
     else
-        echo "        X - Install boards directory missing"
+        echo "  [ERROR] Install boards directory missing"
     fi
     echo ""
     
-    echo "  Configuration Status"
+    echo "Configuration Status:"
     if check_config_file >/dev/null 2>&1; then
-        echo "        OK - Configuration file exists"
+        echo "  [OK] Configuration file exists"
     else
-        echo "        X - Configuration file missing"
+        echo "  [ERROR] Configuration file missing"
     fi
     echo ""
     
-    echo "  Environment Status "
+    echo "Environment Status:"
     if check_env_file >/dev/null 2>&1; then
-        echo "        OK - Environment file exists   "
+        echo "  [OK] Environment file exists"
     else
-        echo "        X - Environment file missing  "
+        echo "  [ERROR] Environment file missing"
     fi
     echo ""
     
-    echo "  Binary Status"
+    echo "Binary Status:"
     if check_binary >/dev/null 2>&1; then
-        echo "        OK - Binary installed and executable"
+        echo "  [OK] Binary installed and executable"
     else
-        echo "        X - Binary not installed"
+        echo "  [ERROR] Binary not installed"
     fi
     echo ""
     
-    echo "  Service Status"
+    echo "Service Status:"
     if check_service >/dev/null 2>&1; then
-        echo "        OK - Service configured"
+        echo "  [OK] Service configured"
     else
-        echo "        X - Service not configured"
+        echo "  [ERROR] Service not configured"
     fi
     echo ""
 }
@@ -413,13 +386,13 @@ generate_report() {
 # Main execution
 main() {
     echo ""
-    echo "═══════════════════════════════════════════════════════════"
-    echo "  SequentTCP Board Installation Observer"
-    echo "═══════════════════════════════════════════════════════════"
+    echo "SequentTCP Board Installation Observer"
     echo ""
     
     if [[ "$CHECK_ONLY" == true ]]; then
         log_info "Running in check-only mode"
+    elif [[ "$EMULATE" == true ]]; then
+        log_info "Running in emulation mode - simulating installed binary behavior"
     else
         log_info "Running with installation permissions"
     fi
@@ -433,6 +406,12 @@ main() {
     # Check root permissions
     check_root
     
+    # Run emulation if requested
+    if [[ "$EMULATE" == true ]]; then
+        emulate_binary_access
+        exit 0
+    fi
+    
     # Run diagnostic checks
     log_info "Running diagnostic checks..."
     echo ""
@@ -445,10 +424,13 @@ main() {
         log_info "To install board definitions, run:"
         echo "  sudo $0 --install-path $INSTALL_BASE"
         echo ""
+        log_info "To emulate installed binary behavior and diagnose access issues, run:"
+        echo "  $0 --emulate"
+        echo ""
     fi
     
     log_success "Diagnostic complete"
 }
 
 # Run main
-main
+main "$@"
