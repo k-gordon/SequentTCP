@@ -70,6 +70,7 @@ The emulation mode simulates how the installed binary would access board definit
 ```
 
 Each check provides:
+
 - **Reason** - Why the issue occurred
 - **Solution** - How to fix it
 
@@ -167,6 +168,7 @@ ls -la /dev/i2c-*
 **Cause:** No `./boards` directory in current working directory AND no boards in `/etc/sequent-gateway/boards`
 
 **Solution:**
+
 ```bash
 # Option 1: Navigate to project root (where ./boards exists)
 cd /path/to/SequentTCP
@@ -192,6 +194,7 @@ This means boards will be found whether you're in development or production mode
 **Cause:** Binary not found at `/usr/local/bin/sequent-gateway`
 
 **Solution:**
+
 ```bash
 # Build and install
 cargo build --release
@@ -206,6 +209,7 @@ sudo sequent-gateway configure
 **Cause:** Configuration file points to different boards directory than expected
 
 **Solution:**
+
 ```bash
 # Check current config
 cat /etc/sequent-gateway/sequent-gateway.toml | grep boards_dir
@@ -219,6 +223,7 @@ sequent-gateway --boards-dir /etc/sequent-gateway/boards
 **Cause:** User doesn't have access to I2C device
 
 **Solution:**
+
 ```bash
 # Add user to i2c group
 sudo usermod -aG i2c $USER

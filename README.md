@@ -1,5 +1,6 @@
 # SequentTCP - Modbus TCP ↔ I²C Gateway
-#### This implementation isn't stable in all ways, nor do all aspects function as described. Use this software at your own risk.
+
+**This implementation isn't stable in all ways, nor do all aspects function as described. Use this software at your own risk**
 
 A high-performance Modbus TCP gateway for **Sequent Microsystems** Raspberry Pi HATs, written in Rust.  
 It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware (relays, analog I/O, opto-isolated inputs, and open-drain outputs) over standard Modbus registers.
@@ -42,7 +43,6 @@ See [DEBUG_SCRIPTS_README.md](DEBUG_SCRIPTS_README.md) for detailed usage instru
 The fastest way to set up the gateway is the **interactive configuration TUI**.
 It walks you through board selection, addressing, and server settings, then writes a ready-to-use `sequent-gateway.toml` config file.
 
-
 ### Quick start install & configure (for latest release)
 
 #### Arm64
@@ -56,6 +56,7 @@ wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gat
 ```bash
 wget https://github.com/k-gordon/SequentTCP/releases/latest/download/sequent-gateway-aarchv7.zip && unzip sequent-gateway-aarchv7.zip && sudo ./sequent-gateway configure
 ```
+
 If the binary isn't installed to `/usr/local/bin/` yet, the TUI will detect this and offer to install it for you (copies the binary and board definitions to `/etc/sequent-gateway/`).  After install it re-launches from the system path automatically.
 
 ### What the TUI does
