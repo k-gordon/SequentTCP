@@ -659,17 +659,11 @@ fn cleanup_old_logs(log_dir: &std::path::Path, prefix: &str, keep: usize) {
 /// - Override: --boards-dir /custom/path takes priority
 fn resolve_boards_search_paths(cli_boards_dir: &Path, config_boards_dir: Option<&Path>) -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    
-    // Track if CLI was explicitly set (not default)
     let cli_explicit = cli_boards_dir != Path::new("boards");
-    
-    // 1. Explicit CLI path (highest priority if specified)
     if cli_explicit {
         paths.push(cli_boards_dir.to_path_buf());
         debug!("Using explicit CLI boards-dir: {}", cli_boards_dir.display());
     }
-    
-    // 2. Config file path (if specified and not same as CLI)
     if let Some(cfg_dir) = config_boards_dir {
         let cfg_path = cfg_dir.to_path_buf();
         if cfg_path != cli_boards_dir.to_path_buf() && !paths.contains(&cfg_path) {
@@ -677,31 +671,23 @@ fn resolve_boards_search_paths(cli_boards_dir: &Path, config_boards_dir: Option<
             debug!("Using config file boards_dir: {}", cfg_dir.display());
         }
     }
-    
-    // 3. Always try relative ./boards (if exists)
+    // Always try relative ./boards (even if it doesn't exist yet)
     let relative_boards = PathBuf::from("./boards");
-    if relative_boards.exists() && relative_boards.is_dir() {
-        if !paths.contains(&relative_boards) {
-            paths.push(relative_boards.clone());
-            debug!("Found relative boards directory: {}", relative_boards.display());
-        }
+    if !paths.contains(&relative_boards) {
+        paths.push(relative_boards.clone());
+        debug!("Added relative boards directory: {}", relative_boards.display());
     }
-    
-    // 4. Always try /etc/sequent-gateway/boards (if exists)
+    // Always try /etc/sequent-gateway/boards (even if it doesn't exist yet)
     let system_boards = PathBuf::from("/etc/sequent-gateway/boards");
-    if system_boards.exists() && system_boards.is_dir() {
-        if !paths.contains(&system_boards) {
-            paths.push(system_boards.clone());
-            debug!("Found system boards directory: {}", system_boards.display());
-        }
+    if !paths.contains(&system_boards) {
+        paths.push(system_boards.clone());
+        debug!("Added system boards directory: {}", system_boards.display());
     }
-    
     // If no paths found yet, add the CLI default as fallback
     if paths.is_empty() {
         paths.push(cli_boards_dir.to_path_buf());
         debug!("Using default boards-dir: {}", cli_boards_dir.display());
     }
-    
     debug!("Board search paths: {:?}", paths);
     paths
 }
