@@ -53,7 +53,7 @@ The emulation mode simulates how the installed binary would access board definit
 
 **Example output:**
 
-```
+```bash
 [INFO] Emulating installed binary behavior...
 
 [DIAG] Step 1: Binary existence check
@@ -96,11 +96,9 @@ Deep debugging script for board definition validation and I²C bus scanning.
 
 ### Usage
 
-```bash
-# Run all debug checks
-./debug-board-reachability.sh
+Run all debug checks as root for I²C bus scanning
 
-# As root for I²C bus scanning
+```bash
 sudo ./debug-board-reachability.sh
 ```
 
