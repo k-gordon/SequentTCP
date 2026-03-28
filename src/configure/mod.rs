@@ -326,14 +326,29 @@ fn check_install(
         args.push(ib.to_string_lossy().into());
     }
 
-    let status = std::process::Command::new(INSTALL_BIN)
-        .args(&args[1..])
-        .status()
-        .with_context(|| format!("Failed to relaunch {INSTALL_BIN}"))?;
+    use std::process::Command;
+    let mut cmd = Command::new(INSTALL_BIN);
+    cmd.args(&args[1..]);
+    // Set working directory to the config dir (or current dir if not possible)
+    if let Some(parent) = std::path::Path::new(output_path).parent() {
+        cmd.current_dir(parent);
+    }
+    // Pass through relevant environment variables
+    for (key, value) in std::env::vars() {
+        // Optionally filter or pass all
+        cmd.env(key, value);
+    }
+    let status = cmd.status().with_context(|| format!("Failed to relaunch {INSTALL_BIN}"))?;
 
     if status.success() {
         Ok(Some(Ok(())))
     } else {
+        eprintln!("\n  ERROR: Failed to relaunch the installed sequent-gateway binary.\n");
+        eprintln!("  Tried to launch: {INSTALL_BIN}");
+        eprintln!("  With args: {:?}", &args[1..]);
+        eprintln!("  In working directory: {:?}", std::env::current_dir().unwrap_or_default());
+        eprintln!("  Exit status: {status}\n");
+        eprintln!("  Please try running 'sequent-gateway configure' manually from the install location.\n");
         anyhow::bail!("Re-launched gateway exited with: {status}")
     }
 }
