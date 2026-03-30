@@ -312,11 +312,11 @@ fn check_install(
     println!();
 
     // ── Re-launch from the installed binary ──────────────────────────
+    // After install, let the binary use its default board search logic
+    // (./boards first, then /etc/sequent-gateway/boards)
     let mut args: Vec<String> = vec![
         INSTALL_BIN.to_string(),
         "configure".to_string(),
-        "--boards-dir".to_string(),
-        INSTALL_BOARDS_DIR.to_string(),
         "--output".to_string(),
         output_path.to_string_lossy().into(),
     ];
