@@ -21,7 +21,7 @@
 pub mod app;
 pub mod ui;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use crossterm::{
@@ -74,6 +74,19 @@ pub fn run(
     run_tui(boards_dir, output_path, install_boards)
 }
 
+pub fn download_boards_to_installed_path() -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if unsafe { libc::geteuid() } != 0 {
+        anyhow::bail!("--download-boards must be run as root to write to {INSTALL_BOARDS_DIR}");
+    }
+
+    let dest = Path::new(INSTALL_BOARDS_DIR);
+    reset_managed_boards_dir(dest)?;
+    let extracted = download_boards_from_github(dest)?;
+    println!("Downloaded {extracted} board definition files into {}", dest.display());
+    Ok(())
+}
+
 /// The actual TUI flow, called after install detection.
 fn run_tui(
     boards_dir: &Path,
@@ -81,49 +94,33 @@ fn run_tui(
     install_boards: Option<&Path>,
 ) -> Result<()> {
     // ── Discover boards ──────────────────────────────────────────────
-    // Pecking order: ./boards, /etc/sequent-gateway/boards, built-in defaults
-    let cwd_boards = Path::new("./boards");
-    let sys_boards = Path::new(INSTALL_BOARDS_DIR);
-    let mut available = Vec::new();
-    if cwd_boards.is_dir() && has_toml_files(cwd_boards) {
-        available = discover_all_boards(cwd_boards)?;
-    } else if sys_boards.is_dir() && has_toml_files(sys_boards) {
-        available = discover_all_boards(sys_boards)?;
-    }
+    let search_paths = configure_board_search_paths(boards_dir);
+    let mut available = discover_configure_boards(boards_dir)?;
 
-    // Optionally: add built-in defaults if no TOMLs found
-    // Optionally: add built-in defaults if no TOMLs found
     if available.is_empty() {
-        println!("\n  No board TOML files found in ./boards or /etc/sequent-gateway/boards.");
-        println!("  Would you like to download the boards directory from GitHub? [Y/n]");
-        use std::io::{self, Write, BufRead};
-        io::stdout().flush().ok();
-        let mut input = String::new();
-        io::stdin().lock().read_line(&mut input).ok();
-        let answer = input.trim().to_lowercase();
-        if answer.is_empty() || answer == "y" || answer == "yes" {
-            // Download boards directory from GitHub main branch
-            let url = "https://raw.githubusercontent.com/k-gordon/SequentTCP/main/boards.zip";
-            let zip_path = "boards_download.zip";
-            println!("  Downloading boards from {} ...", url);
-            match download_boards_zip(url, zip_path) {
-                Ok(_) => {
-                    println!("  Extracting boards ...");
-                    if let Err(e) = extract_boards_zip(zip_path, "./boards") {
-                        anyhow::bail!("Failed to extract boards: {e}");
-                    }
-                    // Re-discover boards
-                    available = discover_all_boards(cwd_boards)?;
-                    if available.is_empty() {
-                        anyhow::bail!("Downloaded boards directory did not contain any valid board TOML files.");
-                    }
-                }
-                Err(e) => {
-                    anyhow::bail!("Failed to download boards directory: {e}");
-                }
-            }
-        } else {
-            anyhow::bail!("No board TOML files found. Please place board definitions in ./boards or /etc/sequent-gateway/boards, or use --builtin-defaults.");
+        println!("\n No board TOML files found in any configure search path.");
+        println!(" Boards are required to configure the gateway.");
+        println!(" Searched:");
+        for path in &search_paths {
+            println!("   - {}", path.display());
+        }
+        println!();
+        println!(" Options:");
+        println!("  1. Place board definitions in one of the searched directories");
+        println!("  2. Download board definitions from GitHub now");
+        println!("     or run: sequent-gateway --download-boards");
+        println!("  3. Use built-in defaults: sequent-gateway --builtin-defaults");
+        println!();
+
+        let download_dest = preferred_download_destination(boards_dir);
+        if prompt_for_board_download(&download_dest)? {
+            let extracted = download_boards_from_github(&download_dest)?;
+            println!("  Downloaded {extracted} board definition files into {}", download_dest.display());
+            available = discover_configure_boards(boards_dir)?;
+        }
+
+        if available.is_empty() {
+            anyhow::bail!("No board TOML files found. Please add board definitions, download them from GitHub, or use --builtin-defaults.");
         }
     }
 
@@ -143,41 +140,6 @@ fn run_tui(
     // ── Run app ──────────────────────────────────────────────────────
     let mut app = App::new(available, existing, output_path.to_path_buf());
     let result = run_app(&mut terminal, &mut app);
-    // ...existing code...
-
-// Helper: Download boards zip from GitHub
-fn download_boards_zip(url: &str, zip_path: &str) -> anyhow::Result<()> {
-    use std::fs::File;
-    use std::io::copy;
-    let resp = reqwest::blocking::get(url)
-        .map_err(|e| anyhow::anyhow!("HTTP error: {e}"))?;
-    let mut out = File::create(zip_path)?;
-    let content = resp.bytes().map_err(|e| anyhow::anyhow!("Read error: {e}"))?;
-    copy(&mut content.as_ref(), &mut out)?;
-    Ok(())
-}
-
-// Helper: Extract boards zip
-fn extract_boards_zip(zip_path: &str, dest_dir: &str) -> anyhow::Result<()> {
-    use std::fs;
-    use zip::ZipArchive;
-    let file = fs::File::open(zip_path)?;
-    let mut archive = ZipArchive::new(file)?;
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        let outpath = std::path::Path::new(dest_dir).join(file.name());
-        if file.is_dir() {
-            fs::create_dir_all(&outpath)?;
-        } else {
-            if let Some(parent) = outpath.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            let mut outfile = fs::File::create(&outpath)?;
-            std::io::copy(&mut file, &mut outfile)?;
-        }
-    }
-    Ok(())
-}
     // ── Restore terminal ─────────────────────────────────────────────
     disable_raw_mode()?;
     std::io::stdout().execute(LeaveAlternateScreen)?;
@@ -190,8 +152,10 @@ fn extract_boards_zip(zip_path: &str, dest_dir: &str) -> anyhow::Result<()> {
 
         // Install boards if requested
         if let Some(dest) = install_boards {
-            install_board_files(boards_dir, dest)?;
-            println!("  Board definitions installed to: {}", dest.display());
+            let source = first_board_dir_with_tomls(&configure_board_search_paths(boards_dir))
+                .ok_or_else(|| anyhow::anyhow!("No board definitions were found to copy into {}", dest.display()))?;
+            install_board_files(&source, dest)?;
+            println!("  Board definitions installed from {} to: {}", source.display(), dest.display());
         }
 
         // Install systemd service if requested
@@ -231,7 +195,7 @@ fn extract_boards_zip(zip_path: &str, dest_dir: &str) -> anyhow::Result<()> {
 fn check_install(
     boards_dir: &Path,
     output_path: &Path,
-    install_boards: Option<&Path>,
+    _install_boards: Option<&Path>,
 ) -> Result<Option<Result<()>>> {
     use std::io::{self, BufRead, Write};
     use anyhow::Context;
@@ -255,8 +219,10 @@ fn check_install(
             _ => false,
         };
         if same_size {
-            // Installed binary looks current — skip the prompt
-            return Ok(None);
+            println!("  Installed binary already matches the current executable.");
+            println!("  Restarting from {INSTALL_BIN} ...\n");
+            relaunch_from_installed_binary(&current_exe, output_path)?;
+            return Ok(Some(Ok(())));
         }
     }
 
@@ -285,6 +251,11 @@ fn check_install(
     // ── Perform installation ─────────────────────────────────────────
     println!();
 
+    if let Some(parent) = install_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create install directory {}", parent.display()))?;
+    }
+
     // 1. Copy binary
     std::fs::copy(&current_exe, INSTALL_BIN)
         .with_context(|| format!("Failed to copy binary to {INSTALL_BIN}"))?;
@@ -298,59 +269,230 @@ fn check_install(
     }
     println!("  Binary installed to {INSTALL_BIN}");
 
-    // 2. Install board definitions
-    let boards_dest = std::path::Path::new(INSTALL_BOARDS_DIR);
-    install_board_files(boards_dir, boards_dest)?;
-    println!("  Board definitions installed to {INSTALL_BOARDS_DIR}");
-
-    // 3. Create config directory
+    // 2. Create config directory
     std::fs::create_dir_all(INSTALL_CONFIG_DIR)?;
     println!("  Config directory: {INSTALL_CONFIG_DIR}");
+
+    // 3. Install board definitions when a source is available
+    let boards_dest = std::path::Path::new(INSTALL_BOARDS_DIR);
+    std::fs::create_dir_all(boards_dest)?;
+    let install_source_candidates = install_board_source_candidates(boards_dir, &current_exe);
+    if let Some(source) = first_board_dir_with_tomls(&install_source_candidates) {
+        install_board_files(&source, boards_dest)?;
+        println!("  Board definitions installed from {} to {INSTALL_BOARDS_DIR}", source.display());
+    } else {
+        println!("  Warning: no local board definitions were found to install.");
+        println!("  Looked in:");
+        for path in &install_source_candidates {
+            println!("    - {}", path.display());
+        }
+        println!("  Continuing with the installed binary; board discovery fallback will apply on next launch.");
+    }
 
     println!();
     println!("  Restarting from {INSTALL_BIN} ...");
     println!();
 
-    // ── Re-launch from the installed binary ──────────────────────────
-    // After install, let the binary use its default board search logic
-    // (./boards first, then /etc/sequent-gateway/boards)
-    let mut args: Vec<String> = vec![
+    relaunch_from_installed_binary(&current_exe, output_path)?;
+    Ok(Some(Ok(())))
+}
+
+#[cfg(target_os = "linux")]
+fn relaunch_from_installed_binary(current_exe: &Path, output_path: &Path) -> Result<()> {
+    use anyhow::Context;
+    use std::process::Command;
+
+    let relaunch_output = if output_path.is_absolute() {
+        output_path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .context("cannot determine current working directory for relaunch")?
+            .join(output_path)
+    };
+    let args: Vec<String> = vec![
         INSTALL_BIN.to_string(),
         "configure".to_string(),
         "--output".to_string(),
-        output_path.to_string_lossy().into(),
+        relaunch_output.to_string_lossy().into(),
     ];
 
-    if let Some(ib) = install_boards {
-        args.push("--install-boards".to_string());
-        args.push(ib.to_string_lossy().into());
-    }
-
-    use std::process::Command;
     let mut cmd = Command::new(INSTALL_BIN);
     cmd.args(&args[1..]);
-    // Set working directory to the config dir (or current dir if not possible)
-    if let Some(parent) = std::path::Path::new(output_path).parent() {
+    if let Some(parent) = current_exe.parent() {
         cmd.current_dir(parent);
-    }
-    // Pass through relevant environment variables
-    for (key, value) in std::env::vars() {
-        // Optionally filter or pass all
-        cmd.env(key, value);
     }
     let status = cmd.status().with_context(|| format!("Failed to relaunch {INSTALL_BIN}"))?;
 
     if status.success() {
-        Ok(Some(Ok(())))
+        Ok(())
     } else {
         eprintln!("\n  ERROR: Failed to relaunch the installed sequent-gateway binary.\n");
         eprintln!("  Tried to launch: {INSTALL_BIN}");
         eprintln!("  With args: {:?}", &args[1..]);
-        eprintln!("  In working directory: {:?}", std::env::current_dir().unwrap_or_default());
+        eprintln!("  Output path: {}", relaunch_output.display());
+        eprintln!("  Relaunch cwd: {}", current_exe.parent().unwrap_or_else(|| Path::new(".")).display());
         eprintln!("  Exit status: {status}\n");
         eprintln!("  Please try running 'sequent-gateway configure' manually from the install location.\n");
         anyhow::bail!("Re-launched gateway exited with: {status}")
     }
+}
+
+fn configure_board_search_paths(boards_dir: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    push_unique_path(&mut paths, boards_dir.to_path_buf());
+    push_unique_path(&mut paths, PathBuf::from("boards"));
+    push_unique_path(&mut paths, PathBuf::from(INSTALL_BOARDS_DIR));
+    paths
+}
+
+#[cfg(target_os = "linux")]
+fn install_board_source_candidates(boards_dir: &Path, current_exe: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    push_unique_path(&mut paths, boards_dir.to_path_buf());
+    if let Some(parent) = current_exe.parent() {
+        push_unique_path(&mut paths, parent.join("boards"));
+    }
+    push_unique_path(&mut paths, PathBuf::from("boards"));
+    paths
+}
+
+fn first_board_dir_with_tomls(paths: &[PathBuf]) -> Option<PathBuf> {
+    paths
+        .iter()
+        .find(|path| path.is_dir() && has_toml_files(path))
+        .cloned()
+}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, candidate: PathBuf) {
+    if !paths.contains(&candidate) {
+        paths.push(candidate);
+    }
+}
+
+fn discover_configure_boards(boards_dir: &Path) -> Result<Vec<AvailableBoard>> {
+    let search_paths = configure_board_search_paths(boards_dir);
+    if let Some(found_dir) = first_board_dir_with_tomls(&search_paths) {
+        discover_all_boards(&found_dir)
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+fn preferred_download_destination(boards_dir: &Path) -> PathBuf {
+    let default_dir = Path::new("boards");
+    if boards_dir != default_dir {
+        return boards_dir.to_path_buf();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if unsafe { libc::geteuid() } == 0 {
+            return PathBuf::from(INSTALL_BOARDS_DIR);
+        }
+    }
+
+    default_dir.to_path_buf()
+}
+
+fn prompt_for_board_download(dest: &Path) -> Result<bool> {
+    use std::io::{self, BufRead, Write};
+
+    println!("  Download board definitions from GitHub into {}? [Y/n] ", dest.display());
+    print!("  > ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+    let answer = input.trim().to_lowercase();
+    Ok(answer.is_empty() || answer == "y" || answer == "yes")
+}
+
+fn download_boards_from_github(dest: &Path) -> Result<usize> {
+    use anyhow::Context;
+    use std::io::{Cursor, Read, Write};
+
+    const REPO_ARCHIVE_URL: &str = "https://github.com/k-gordon/SequentTCP/archive/refs/heads/main.zip";
+
+    println!("  Downloading boards archive from {REPO_ARCHIVE_URL} ...");
+    let response = reqwest::blocking::get(REPO_ARCHIVE_URL)
+        .context("Failed to request GitHub repository archive")?
+        .error_for_status()
+        .context("GitHub archive request returned an error status")?;
+    let bytes = response
+        .bytes()
+        .context("Failed to read GitHub archive response body")?;
+
+    let reader = Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(reader)
+        .context("Failed to open GitHub archive as zip")?;
+
+    std::fs::create_dir_all(dest)
+        .with_context(|| format!("Failed to create destination directory {}", dest.display()))?;
+
+    let mut extracted = 0usize;
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index)
+            .with_context(|| format!("Failed to read zip entry #{index}"))?;
+        let Some(relative_path) = archive_boards_relative_path(file.name()) else {
+            continue;
+        };
+
+        let output_path = dest.join(&relative_path);
+        if file.is_dir() {
+            std::fs::create_dir_all(&output_path)?;
+            continue;
+        }
+
+        if let Some(parent) = output_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut outfile = std::fs::File::create(&output_path)
+            .with_context(|| format!("Failed to create {}", output_path.display()))?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)
+            .with_context(|| format!("Failed to read archive entry {}", file.name()))?;
+        outfile
+            .write_all(&buffer)
+            .with_context(|| format!("Failed to write {}", output_path.display()))?;
+        if output_path.extension().map_or(false, |ext| ext == "toml") {
+            extracted += 1;
+        }
+    }
+
+    if extracted == 0 {
+        anyhow::bail!("GitHub archive did not contain any board TOML files");
+    }
+
+    Ok(extracted)
+}
+
+fn reset_managed_boards_dir(dest: &Path) -> Result<()> {
+    use anyhow::Context;
+
+    if dest.exists() {
+        std::fs::remove_dir_all(dest)
+            .with_context(|| format!("Failed to clear existing boards directory {}", dest.display()))?;
+    }
+    std::fs::create_dir_all(dest)
+        .with_context(|| format!("Failed to create boards directory {}", dest.display()))?;
+    Ok(())
+}
+
+fn archive_boards_relative_path(entry_name: &str) -> Option<PathBuf> {
+    let path = Path::new(entry_name);
+    let parts: Vec<_> = path.iter().collect();
+    let boards_index = parts.iter().position(|part| *part == std::ffi::OsStr::new("boards"))?;
+    let relative_parts = &parts[boards_index + 1..];
+    if relative_parts.is_empty() {
+        return None;
+    }
+
+    let mut relative = PathBuf::new();
+    for part in relative_parts {
+        relative.push(part);
+    }
+    Some(relative)
 }
 
 /// Check if a directory contains any `.toml` files.
