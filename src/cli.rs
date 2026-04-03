@@ -28,6 +28,13 @@ pub struct Cli {
     #[arg(long)]
     pub builtin_defaults: bool,
 
+    /// Download the board definition library into the installed system path.
+    ///
+    /// This refreshes `/etc/sequent-gateway/boards` from GitHub and overwrites
+    /// the managed board library there.
+    #[arg(long)]
+    pub download_boards: bool,
+
     /// IP address to bind the Modbus TCP server
     #[arg(long, default_value = "0.0.0.0")]
     pub host: String,

@@ -165,6 +165,9 @@ sudo ./target/release/sequent-gateway --board relay16
 > **Quickest path:** Run `sudo sequent-gateway configure --install-boards /etc/sequent-gateway/boards`
 > it installs the binary, board definitions, and writes the config file in one step.
 
+> **Refresh just the board library:** Run `sudo sequent-gateway --download-boards`
+> to download the latest board definitions from GitHub into `/etc/sequent-gateway/boards` and overwrite the managed install copy.
+
 Manual install:
 
 ```bash

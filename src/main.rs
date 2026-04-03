@@ -52,6 +52,10 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 async fn main() -> Result<()> {
     let args = Cli::parse();
 
+    if args.download_boards {
+        return configure::download_boards_to_installed_path();
+    }
+
     // ── Subcommands — early return before server startup ─────────────
     match &args.command {
         Some(cli::Command::Validate(ref va)) => return validate::run(va),
