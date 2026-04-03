@@ -5,39 +5,6 @@
 A high-performance Modbus TCP gateway for **Sequent Microsystems** Raspberry Pi HATs, written in Rust.  
 It bridges Modbus TCP clients (SCADA, HMI, PLC) to the I²C-based Sequent hardware (relays, analog I/O, opto-isolated inputs, and open-drain outputs) over standard Modbus registers.
 
-## Debugging & Installation Scripts
-
-For debugging board definition installation and reachability, use the provided shell scripts:
-
-### observe-board-install.sh
-
-Comprehensive observer for monitoring board installation to system locations.
-
-```bash
-# Check current state (no installation)
-./observe-board-install.sh --check-only
-
-# Install boards to /etc/sequent-gateway/boards
-sudo ./observe-board-install.sh
-
-# Verbose diagnostic report
-./observe-board-install.sh --verbose
-```
-
-### debug-board-reachability.sh
-
-Deep debugging for board TOML validation and I²C bus scanning.
-
-```bash
-# Validate all board definitions
-./debug-board-reachability.sh
-
-# Scan I²C bus (requires root)
-sudo ./debug-board-reachability.sh
-```
-
-See [DEBUG_SCRIPTS_README.md](DEBUG_SCRIPTS_README.md) for detailed usage instructions.
-
 ## Getting Started
 
 The fastest way to set up the gateway is the **interactive configuration TUI**.
@@ -216,28 +183,55 @@ sudo ./target/release/sequent-gateway validate --skip-writes
 The report maps directly to Story 10 and Epic 2 acceptance criteria.
 Copy-paste the output to report results.
 
+## Debugging & Installation Scripts
+
+For debugging board definition installation and reachability, use the provided shell scripts:
+
+### observe-board-install.sh
+
+Comprehensive observer for monitoring board installation to system locations.
+
+```bash
+# Check current state (no installation)
+./observe-board-install.sh --check-only
+
+# Install boards to /etc/sequent-gateway/boards
+sudo ./observe-board-install.sh
+
+# Verbose diagnostic report
+./observe-board-install.sh --verbose
+```
+
+### debug-board-reachability.sh
+
+Deep debugging for board TOML validation and I²C bus scanning.
+
+```bash
+# Validate all board definitions
+./debug-board-reachability.sh
+
+# Scan I²C bus (requires root)
+sudo ./debug-board-reachability.sh
+```
+
+See [DEBUG_SCRIPTS_README.md](DEBUG_SCRIPTS_README.md) for detailed usage instructions.
+
 ## Architecture
 
-```diag
-┌──────────────────────────────────────────────────┐
-│                  Rust Binary                     │
-│                                                  │
-│  ┌────────────┐   ┌───────────────────────────┐  │
-│  │  Modbus    │   │  I²C HAL Layer            │  │
-│  │  TCP       │◄─►│                           │  │
-│  │  Server    │   │  ┌─────────┐ ┌──────────┐ │  │
-│  │            │   │  │ MegaInd │ │ Relay    │ │  │
-│  │            │   │  │ Board   │ │ Board    │ │  │
-│  └────────────┘   │  └────┬────┘ └────┬─────┘ │  │
-│                   │       │           │       │  │
-│  ┌────────────┐   │    /dev/i2c-1     │       │  │
-│  │  Health    │   └───────────────────────────┘  │
-│  │  HTTP      │                                  │
-│  └────────────┘                                  │
-└──────────────────────────────────────────────────┘
-         ▲                  │
-   Modbus TCP          I²C Bus
-   (SCADA/vPLC)        (Sequent HATs)
+```mermaid
+flowchart LR
+      Client[SCADA / HMI / vPLC\nModbus TCP] --> Modbus[Modbus TCP Server]
+
+      subgraph Binary[Rust Binary]
+            Modbus <--> HAL[I²C HAL Layer]
+            Health[Health HTTP]
+            HAL --> Mega[MegaInd Board]
+            HAL --> Relay[Relay Board]
+      end
+
+      Mega --> Bus[/dev/i2c-1\nI²C Bus]
+      Relay --> Bus
+      Bus --> Hats[Sequent HATs]
 ```
 
 The gateway runs a 10 Hz polling loop with direct I²C register access (< 1 ms per cycle):
